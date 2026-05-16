@@ -55,6 +55,8 @@ module pre_tokenizer #(
     reg word_done_ack_wait;  // 1 = waiting for trie to acknowledge word_done
     reg trie_ready_seen_low; // 1 = trie_ready went low after word_done (trie is processing)
     
+    reg [2:0] word_done_ack_wait_count;
+    
     // Lowercase conversion (combinational)
     // BERT base-uncased requires all text in lowercase.
     // ASCII uppercase A-Z = 0x41-0x5A, add 0x20 to get lowercase.
@@ -94,6 +96,7 @@ module pre_tokenizer #(
             hold_word_done <= 1'b0; // cleared
             word_done_ack_wait <= 1'b0; // cleared
             trie_ready_seen_low <= 1'b0; // cleared
+            word_done_ack_wait_count <= 3'd0;
          end else begin
             // drive outputs to trie engine
             // defaults: all output pulses are cleared - they only go high when needed.
@@ -104,8 +107,14 @@ module pre_tokenizer #(
             if (word_done_ack_wait) begin
                 if (!trie_ready_seen_low) begin
                     // Phase 1: waiting for trie_ready to go low
-                    if (!trie_ready)
+                    if (!trie_ready) begin
                         trie_ready_seen_low <= 1'b1;
+                    end else if (word_done_ack_wait_count >= 4) begin
+                        // Trie never went busy - it handled word_done instantly
+                        // Release after a few cycles of grace period
+                        word_done_ack_wait  <= 1'b0;
+                        trie_ready_seen_low <= 1'b0;
+                    end
                 end else begin
                     // Phase 2: trie_ready went low, wait for it to come back high
                     if (trie_ready) begin
@@ -113,7 +122,13 @@ module pre_tokenizer #(
                         trie_ready_seen_low <= 1'b0;
                     end
                 end
-            end
+            end 
+            
+            // Counter for ack wait timeout
+            if (word_done_ack_wait && !trie_ready_seen_low)
+                word_done_ack_wait_count <= word_done_ack_wait_count + 1;
+            else
+                word_done_ack_wait_count <= 3'd0;
              
             // if trie is ready and we have a character waiting
             if (trie_ready && hold_valid && !hold_word_done && !word_done_ack_wait) begin

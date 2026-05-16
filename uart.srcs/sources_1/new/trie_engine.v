@@ -42,7 +42,8 @@ module trie_engine #(
                      S_EVAL = 4'd5, // comparing the edge data we got (index) against the target character (either go left or right)
                      S_TERMINAL_WAIT = 4'd6, // waiting 1 cycle for BRAM to return terminal flag & token ID
                      S_EMIT = 4'd7, // output the matched token ID
-                     S_TERM_READ = 4'd8; // read terminal flag and token ID from BRAM
+                     S_TERM_READ = 4'd8, // read terminal flag and token ID from BRAM
+                     S_CALC_MID = 4'd9;
 
     reg [3:0] state;
 
@@ -318,23 +319,20 @@ module trie_engine #(
                 // lower 16 bits = count (the amount of edges this node has)
                 // if count == 0, then dead end! go to S_EMIT
                 S_ROW_READ: begin
-                    // we read count - lowe 16 bits
+                    // Register the row_ptr data - just capture it, no arithmetic yet
                     if (bram_row_data[15:0] == 16'd0) begin
-                        // This node has zero children -> dead end in trie
                         state <= S_EMIT;
                     end else begin
-                        // initialize binary search bounds
-                        // bs_lo - lower bound
-                        // bs_hi - higher bound (last edge index)
-                        bs_lo <= bram_row_data[31:16]; // Extract offset (upper 16 bits)
-                        bs_hi <= bram_row_data[31:16] + bram_row_data[15:0] - 16'd1; // Find last edge index
-                        // Compute first binary search midpoint and issue edge read
-                        edge_rd_addr <= bram_row_data[31:16]
-                                      + ((bram_row_data[15:0] - 16'd1) >> 1);
-                        state <= S_SEARCH_WAIT;   // wait for edge BRAM read
-                    end
+                        bs_lo <= bram_row_data[31:16];
+                        bs_hi <= bram_row_data[31:16] + bram_row_data[15:0] - 16'd1;
+                        state <= S_CALC_MID;  // NEW state
+                    end  
                 end
-
+                S_CALC_MID: begin
+                    // Now compute midpoint from registered bs_lo and bs_hi
+                    edge_rd_addr <= bs_lo + ((bs_hi - bs_lo) >> 1);
+                    state <= S_SEARCH_WAIT;
+                end
                 // --------------------------------------------------------
                 // S_SEARCH: Compute new midpoint after narrowing bounds
                 // UNCHANGED
