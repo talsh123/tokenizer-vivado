@@ -1,0 +1,1 @@
+set_property CLOCK_DEDICATED_ROUTE ANY_CMT_COLUMN [get_nets design_1_i/clk_wiz_1/inst/clk_100]

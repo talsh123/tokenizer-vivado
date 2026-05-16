@@ -1,0 +1,18 @@
+# Vivado generated outputs
+*.dcp
+*.bit
+*.ltx
+*.log
+*.jou
+*.str
+*.xpr.bak
+
+# Run directories
+uart.runs/
+uart.sim/
+uart.cache/
+uart.ip_user_files/
+uart.hw/
+
+# Imported synthesis artifacts
+uart.srcs/utils_1/imports/
