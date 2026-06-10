@@ -17,17 +17,17 @@ module pre_tokenizer #(
     input wire clk, // clk_100 100 MHz clock
     input wire rst, // synchronous active-high reset
     
-    // Upstream - data that comes from FIFO - which comes before the pre-tokenizer
+    // upstream - data that comes from FIFO - which comes before the pre-tokenizer
     input wire [7:0] fifo_data, // 8 bits of raw ascii text (a single character)
     input wire fifo_valid, // a flag which says if the input FIFO buffer has a byte available for us
     output reg fifo_ready, // a flag which says that we are ready to consume that character
     
-    // Downstream - data that is being sent down to the trie engine - which comes after the pre-tokenizer
+    // downstream - data that is being sent down to the trie engine - which comes after the pre-tokenizer
     output reg [CHAR_W-1:0] out_char, // this is the mapped alphabet index (10 bits)
     output reg out_char_valid, // a flag which pulses HIGH for 1 cycle when a character is ready
     output reg out_word_done, // a flag which pulses HIGH when a word boundary is detected
     
-    // From Downstream to us - from the trie engine (backpressure)
+    // from Downstream to us - from the trie engine (backpressure)
     input wire trie_ready, // when trie_ready turns to 0, the trie is busy and can't accept new characters.
     output wire word_boundary_busy // this goes out to the tokenizer_axi_lite - stops the input FIFO from sending new characters while the trie engine is still processing word boundary
 );
@@ -99,7 +99,7 @@ module pre_tokenizer #(
             // drive outputs to trie engine.
             // every cycle, out_char_valid and out_word_done default to 0.
             // we make them HIGH only when needed depending on the condition, and that guarantees they are HIGH for only 1 clock cycle.
-            // even if we set them here to 0 using <= and later we set them to 1 using <=, only the last assingnment wins.
+            // even if we set them here to 0 using <= and later we set them to 1 using <=, only the last assignnment wins.
             out_char_valid <= 1'b0;
             out_word_done  <= 1'b0;
             
