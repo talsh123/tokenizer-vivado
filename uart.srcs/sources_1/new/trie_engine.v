@@ -265,7 +265,12 @@ module trie_engine #(
                             replaying <= 1'b0; // we set the replaying flag to 0, indicating we finished replaying
                             // if we finished the entire word
                             if (word_done_pending) begin
-                                word_done_pending <= 1'b0; // clear the pending flag 
+                                // H1 FIX: word_done_pending is intentionally NOT cleared here. S_EMIT is the
+                                // single owner of this flag and finalizes the word. Clearing it early made
+                                // S_EMIT's (best_end==buf_end) branch skip finalization -- holding the FSM
+                                // in S_EMIT and emitting a spurious [UNK] (token 100); and on the
+                                // (best_end!=buf_end) path it dropped the final continuation piece.
+                                // Leave it set -- S_EMIT clears it (~line 415). 
                                 use_root <= 1'b1; // we initialize the use_root to use the root trie for the next word
                                 // If we found a match during replay, we emit what we have (best match or [UNK])
                                 if (has_best_match) begin
@@ -357,9 +362,19 @@ module trie_engine #(
                         bs_lo <= edge_rd_addr + 16'd1; // we set the lower bound 1 above the current midpoint
                         state <= S_SEARCH; // go to S_SEARCH to compute the new midpoint after we narrowed it down
                     end else begin // if the edge character > target (greater)
-                        // the target is in the lower half
-                        bs_hi <= edge_rd_addr - 16'd1; // we set the higher bound 1 below the current midpoint
-                        state <= S_SEARCH; // go to S_SEARCH to compute the new midpoint after we narrowed it down
+                        // the target is in the lower half [bs_lo, edge_rd_addr-1].
+                        // H2 FIX: if the midpoint is already at the low bound, that lower half
+                        // is empty -> the character is absent. Computing edge_rd_addr-1 here would
+                        // underflow when edge_rd_addr==0 (only possible at a node whose edges start
+                        // at offset 0, i.e. node 0): bs_hi would wrap to 0xFFFF, the (bs_lo > bs_hi)
+                        // guard in S_SEARCH would fail, and the search would read out-of-range edges.
+                        // Treat it as not-found instead (also avoids one extra search iteration).
+                        if (edge_rd_addr == bs_lo) begin
+                            state <= S_EMIT; // lower half empty -> character not found, emit what we have
+                        end else begin
+                            bs_hi <= edge_rd_addr - 16'd1; // we set the higher bound 1 below the current midpoint
+                            state <= S_SEARCH; // go to S_SEARCH to compute the new midpoint after we narrowed it down
+                        end
                     end
                 end 
 
@@ -432,6 +447,13 @@ module trie_engine #(
                                     ready <= 1'b1; // set the ready flag to 1, indicating we are ready for a new character
                                     state <= S_IDLE; // jump to S_IDLE
                                 end
+                            end else begin
+                                // H1 FIX (defensive): every branch must assign a next state. With the
+                                // premature word_done_pending clear removed above, reaching here -- a
+                                // match consumed the whole buffer with no word boundary pending -- is
+                                // not expected; return to a safe IDLE rather than holding S_EMIT.
+                                ready <= 1'b1;
+                                state <= S_IDLE;
                             end
                         end                                            
                     
