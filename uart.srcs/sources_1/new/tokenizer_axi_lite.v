@@ -131,15 +131,27 @@ module tokenizer_axi_lite #(
 
     reg out_fifo_rd_en; // single cycle pulse that triggers a FIFO read
 
+    // M2: output-FIFO overflow detection (de-silence dropped tokens)
+    reg out_fifo_overflow; // sticky: set when a token is dropped because the output FIFO was full
+    reg clear_overflow;    // 1-cycle pulse from the AXI write logic (write to STATUS) to clear the flag
+
     always @(posedge clk) begin
         if (rst) begin // if we have a reset signal
             out_fifo_wr_ptr <= 0; // cleared
             out_fifo_rd_ptr <= 0; // cleared
+            out_fifo_overflow <= 1'b0; // cleared (M2)
         end else begin // else
             if (tok_out_valid && !out_fifo_full) begin // when the trie engine emits a token and the output FIFO is not full
                 out_fifo_mem[out_fifo_wr_ptr[OUT_FIFO_DEPTH_LOG2-1:0]] <= tok_out_data; // stores the outputted token
                 out_fifo_wr_ptr <= out_fifo_wr_ptr + 1; // advances the pointer
             end
+            // M2: a token emitted while the FIFO is full is DROPPED. Record it so the loss is
+            // detectable (STATUS bit 2) instead of silent. 'set' takes priority over 'clear' so
+            // a drop is never missed if a clear arrives on the same cycle.
+            if (tok_out_valid && out_fifo_full)
+                out_fifo_overflow <= 1'b1;
+            else if (clear_overflow)
+                out_fifo_overflow <= 1'b0;
             if (out_fifo_rd_en && !out_fifo_empty) begin // if we have a FIFO read pulse and the output FIFO is not empty
                 out_fifo_rd_ptr <= out_fifo_rd_ptr + 1; // advances the pointer
             end
@@ -181,8 +193,10 @@ module tokenizer_axi_lite #(
             aw_ready_done <= 1'b0; // cleared
             w_ready_done <= 1'b0; // cleared
             axi_awaddr_latched <= 0; // cleared
+            clear_overflow <= 1'b0; // cleared (M2)
         end else begin
             in_fifo_wr_en <= 1'b0; // on default in every cycle, in_fifo_wr_en is 0. it only goes high when both address and data are ready.
+            clear_overflow <= 1'b0; // M2: default 0; pulses high only on a write to STATUS (0x08)
 
             // accept write address
             if (s_axi_awvalid && !aw_ready_done) begin // when the master presents a valid write address and we haven't captured it yet
@@ -206,6 +220,9 @@ module tokenizer_axi_lite #(
                 // if the write targets TX_DATA, pulse in_fifo_wr_en to push the byte into the input FIFO
                 // for any other register, the write is silently ignored.
                     in_fifo_wr_en <= 1'b1; // pulse in FIFO write signal
+                end
+                if (axi_awaddr_latched[3:2] == 2'b10) begin // M2: 0x08 = STATUS -> write-to-clear the overflow flag
+                    clear_overflow <= 1'b1;
                 end
                 // issue a write response and reset the flags for the next transaction.
                 s_axi_bvalid  <= 1'b1; // bvalid = 1
@@ -252,8 +269,11 @@ module tokenizer_axi_lite #(
                     end
                     2'b10: begin // corresponds to 0x08 (STATUS), meaning it is a STATUS register.
                         // bit 0 = ~in_fifo_full = 1, when it's safe to write (input FIFO has space).
-                        // bit 1 = ~out_fifo_empty = 1 when a token is available to read. Bits 31:2 are always 0. This is what the C code's tok_can_write() and tok_has_token() functions check.
-                        s_axi_rdata <= {30'd0, ~out_fifo_empty, ~in_fifo_full};
+                        // bit 1 = ~out_fifo_empty = 1 when a token is available to read.
+                        // bit 2 = out_fifo_overflow (M2): 1 if any token was dropped because the output
+                        //         FIFO was full. Sticky; cleared by reset or by writing to STATUS (0x08).
+                        // This is what the C code's tok_can_write()/tok_has_token() (and an overflow check) read.
+                        s_axi_rdata <= {29'd0, out_fifo_overflow, ~out_fifo_empty, ~in_fifo_full};
                     end
                     default: begin // reserved register returns 0.
                         // when no read is active, arready stays 0.
