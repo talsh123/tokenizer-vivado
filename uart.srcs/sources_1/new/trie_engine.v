@@ -170,6 +170,10 @@ module trie_engine #(
     reg replaying; // 1 if the engine is replaying buffered characters after a backtrack.
     // during replay, the engine reads from char_buf instead from the pre-tokenizer input and ready stays at 0 to prevent from new characters to come in.
 
+    reg word_too_long; // M1: set when the current word exceeds the char_buf capacity (BUF_DEPTH).
+    // while set, further characters of the word are discarded (drained) and the word is
+    // flushed as a single [UNK] at the word boundary, preventing buf_end pointer wrap/corruption.
+
     // UNK Token ID
     localparam [TOKEN_W-1:0] UNK_TOKEN_ID = 16'd100; // a local parameter which represents the unknown token [UNK] - token ID 100
     
@@ -202,6 +206,7 @@ module trie_engine #(
             term_rd_addr <= {NODE_W{1'b0}}; // cleared
             pending_char <= {CHAR_W{1'b0}}; // cleared
             pending_char_valid <= 1'b0; // cleared
+            word_too_long <= 1'b0; // cleared (M1)
         end else begin
             // drive output to output FIFO.
             // every cycle, out_token_valid default to 0.
@@ -228,8 +233,27 @@ module trie_engine #(
                 S_IDLE: begin // S_IDLE state
                     // if a word boundary is pending and we are not replaying (backtracking)
                     if (word_done_pending && !replaying) begin
+                        // M1 FIX: if the word overflowed char_buf, abandon partial state and emit a
+                        // single [UNK] sentinel for the over-long word, then reset for the next word.
+                        // (Pieces already streamed out for the part that fit remain -- the streaming
+                        // architecture cannot un-emit them. This signals truncation and, crucially,
+                        // the intake guard below prevents the buf_end wrap that would corrupt state.)
+                        if (word_too_long) begin
+                            out_token_id      <= UNK_TOKEN_ID; // emit [UNK] (token 100)
+                            out_token_valid   <= 1'b1;
+                            word_too_long     <= 1'b0;
+                            word_done_pending <= 1'b0;
+                            use_root          <= 1'b1; // next word starts in the root trie
+                            word_active       <= 1'b0;
+                            has_best_match    <= 1'b0;
+                            current_node      <= {NODE_W{1'b0}};
+                            m_start           <= 5'd0;
+                            scan_ptr          <= 5'd0;
+                            buf_end           <= 5'd0;
+                            ready             <= 1'b1;
+                            state             <= S_IDLE;
                         // if we have a best_match - meaning a valid token was found while traversing the characters of this word
-                        if (has_best_match) begin
+                        end else if (has_best_match) begin
                             // capture another character so the is isn't lost
                             // this is an edge case - the pre-tokenizer might send the first character of the next word on the same cycle as word_done
                             if (in_char_valid && ready) begin // if the pre-tokenizer has a character ready for us and we can accept it
@@ -298,13 +322,25 @@ module trie_engine #(
 
                     // this is the normal operation - meaning there is no word_done, and we aren't backtracking
                     end else if (in_char_valid && ready) begin
-                        word_active  <= 1'b1; // we set the word_active flag to 1, indicating we are inside a word
-                        target_char  <= in_char; // we mark the inputted character as the target to search
-                        char_buf[buf_end[4:0]] <= in_char; // storing the incoming character in the backtracking buffer
-                        buf_end <= buf_end + 1'b1; // advance the write pointer
-                        row_rd_addr <= current_node; // issue the BRAM read for the current node (which we copy to the row we look for)
-                        state <= S_ROW_WAIT; // go to S_ROW_WAIT, waiting for the BRAM read
-                        ready <= 1'b0; // not ready for new input
+                        // M1 FIX: guard against words longer than the backtracking buffer.
+                        // buf_end is 5 bits (0..31); writing a 32nd character would wrap it to 0
+                        // and corrupt the buffer. When the buffer is full (buf_end == BUF_DEPTH-1),
+                        // stop buffering/walking and discard the remaining characters of this word
+                        // (drain, staying ready). The over-long word is flushed as a single [UNK]
+                        // when word_done arrives (see the word_too_long handler above).
+                        // NOTE: the BUF_DEPTH-1 threshold assumes 5-bit pointers; raising BUF_DEPTH
+                        // also requires widening buf_end/scan_ptr/m_start/best_end accordingly.
+                        if (buf_end == BUF_DEPTH-1) begin
+                            word_too_long <= 1'b1; // char is discarded; stay in S_IDLE, ready stays 1 to drain
+                        end else begin
+                            word_active  <= 1'b1; // we set the word_active flag to 1, indicating we are inside a word
+                            target_char  <= in_char; // we mark the inputted character as the target to search
+                            char_buf[buf_end[4:0]] <= in_char; // storing the incoming character in the backtracking buffer
+                            buf_end <= buf_end + 1'b1; // advance the write pointer
+                            row_rd_addr <= current_node; // issue the BRAM read for the current node (which we copy to the row we look for)
+                            state <= S_ROW_WAIT; // go to S_ROW_WAIT, waiting for the BRAM read
+                            ready <= 1'b0; // not ready for new input
+                        end
                     end
                 end
                 
