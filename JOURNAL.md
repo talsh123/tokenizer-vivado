@@ -716,6 +716,15 @@ synthesized result is **identical** (flip-flops, synchronous write / asynchronou
 warnings are gone. A true-LUTRAM refactor (single muxed write port) is possible but would touch the
 verified datapath for no functional gain, so it was not done.
 
+### tok_word_busy used-before-declaration warning (`tokenizer_axi_lite.v`)
+Synthesis warned `[Synth 8-6901] identifier 'tok_word_busy' is used before its declaration`: the
+input-FIFO block reads `tok_word_busy` (the pre-tokenizer's word-boundary gate) while the `wire` was
+declared further down with the other pipeline-output wires. Verilog resolves it to the same net, so
+it was always functionally correct, but it is an untidy forward reference. **Fix:** moved the
+`wire tok_word_busy;` declaration up next to `in_fifo_ready`, ahead of the input-FIFO block that
+reads it (the net is still driven by the `top_tokenizer` instance further down — fine for a net).
+Pure declaration move, zero behavioral change; the warning clears on the next synthesis run.
+
 ### L2 — testbench coverage gap (digits)
 **Engineering field:** functional-verification completeness. Existing tests covered `[UNK]`,
 over-long words, and overflow, but not digit input. Added a `check_no_unk` invariant task and a
