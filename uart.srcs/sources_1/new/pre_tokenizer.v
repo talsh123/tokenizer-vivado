@@ -29,7 +29,12 @@ module pre_tokenizer #(
     
     // from Downstream to us - from the trie engine (backpressure)
     input wire trie_ready, // when trie_ready turns to 0, the trie is busy and can't accept new characters.
-    output wire word_boundary_busy // this goes out to the tokenizer_axi_lite - stops the input FIFO from sending new characters while the trie engine is still processing word boundary
+    output wire word_boundary_busy, // this goes out to the tokenizer_axi_lite - stops the input FIFO from sending new characters while the trie engine is still processing word boundary
+
+    // tells the rest of the pipeline that the pre-tokenizer still has work in flight
+    // (a character held for the trie, a pending word boundary, or a pulse being driven this cycle).
+    // used by top_tokenizer to build the overall pipeline-busy status the firmware polls.
+    output wire pt_busy
 );
 
      // this line declares a 128-entry array, each entry 10 bits wide.
@@ -55,12 +60,7 @@ module pre_tokenizer #(
     // 1 - holding register has data for trie, 0 - empty holding register 
     reg hold_word_done; // a flag which indicates that a word boundary needs to be signaled
     // 1 - a word_done signal needs to be sent, otherwise 0
-    
-    reg word_done_ack_wait;  // a flag which indicates 1 when waiting for the trie engine to finish processing the word boundary, otherwise 0.
-    reg trie_ready_seen_low; // a flag which indicates 1 if we've seen trie_ready drop to 0 (phase 1 complete), otherwise 0
-    reg [2:0] word_done_ack_wait_count; // a 3-bit counter (counts 0-7) which gives the trie 4 cycles to respond.
-    // if it doesn't drop ready within 4 cycles, the pre-tokenizer assumes processing was instant and releases the gate.
-    
+
     // lowercase conversion (combinational) - add 0x20 to convert uppercase to lowercase
     wire [7:0] lower_byte; // lower_byte will contain the lowercase letter
     // checks if it is between 41 hex to 5A hex (A - Z). if so, add 20 hex, otherwise keep as is.
@@ -76,9 +76,14 @@ module pre_tokenizer #(
     //1 - if the holding register is empty OR the trie engine is ready to receive new characters, otherwise 0.
     wire can_accept = !hold_valid || trie_ready;
     
-    // this is the signal that is being sent to tokenizer_axi_lite.v which prevents from new bytes to be presented from the FIFO when the trie engine is busy.
-    // 1 if we are in the middle of handling a word boundary (trie hasn't finished yet or word_done hasn't been sent yet), otherwise 0
-    assign word_boundary_busy = word_done_ack_wait || hold_word_done;
+    // this is the signal that is being sent to tokenizer_axi_lite.v which prevents new bytes from being presented from the FIFO while a word boundary is being handed to the trie engine.
+    // 1 only while a word boundary is held waiting to be sent; the trie engine's own ready line provides all other backpressure.
+    assign word_boundary_busy = hold_word_done;
+
+    // high whenever the pre-tokenizer still has work in flight: a character held for the
+    // trie, a word boundary held, or either output pulse being driven this cycle. the
+    // out_* pulse terms close the one-cycle gap while data is in flight to the trie engine.
+    assign pt_busy = hold_valid || hold_word_done || out_char_valid || out_word_done;
     
     // the sequential logic
     always @(posedge clk) begin
@@ -92,9 +97,6 @@ module pre_tokenizer #(
             hold_char      <= {CHAR_W{1'b0}}; // cleared
             hold_valid     <= 1'b0; // cleared
             hold_word_done <= 1'b0; // cleared
-            word_done_ack_wait <= 1'b0; // cleared
-            trie_ready_seen_low <= 1'b0; // cleared
-            word_done_ack_wait_count <= 3'd0; // cleared
          end else begin
             // drive outputs to trie engine.
             // every cycle, out_char_valid and out_word_done default to 0.
@@ -102,51 +104,26 @@ module pre_tokenizer #(
             // even if we set them here to 0 using <= and later we set them to 1 using <=, only the last assignnment wins.
             out_char_valid <= 1'b0;
             out_word_done  <= 1'b0;
-            
-            // word-done acknowledgment state machine
-            if (word_done_ack_wait) begin // we sent word_done pulse (the trie engine hasn't finished processing the word boundary)
-                if (!trie_ready_seen_low) begin // meaning we haven't reached phase 1 (trie_ready isn't 0 yet, isn't busy)
-                    // phase 1: waiting for trie_ready to go low
-                    if (!trie_ready) begin // if the trie engine is busy, meaning it is still LOW
-                        trie_ready_seen_low <= 1'b1; // record it and move to phase 2
-                    end else if (word_done_ack_wait_count >= 4) begin // the trie engine has been ready for 4+ cycles and never went busy.
-                        // the the trie handled word_done instantly (happens after the last word), clear both flags.
-                        word_done_ack_wait  <= 1'b0; // cleared.
-                        trie_ready_seen_low <= 1'b0; // cleared.
-                    end
-                end else begin
-                    // phase 2: trie_ready went low, wait for it to come back high
-                    if (trie_ready) begin // trie_ready is now high, clear both flags
-                        word_done_ack_wait  <= 1'b0; // clear both flags
-                        trie_ready_seen_low <= 1'b0; // clear both flags
-                    end
-                end
-            end 
-            
-            // counter for ack-wait timeout
-            // this increments the counter in case of phase 1. this allows the >= 4 check above.
-            if (word_done_ack_wait && !trie_ready_seen_low) // if we sent a word_done pulse and trie_ready isn't 0 yet
-                word_done_ack_wait_count <= word_done_ack_wait_count + 1; // increment the timer by 1 (3 bits - 0,1,2...7 -> 0,1,...)
-            else
-                word_done_ack_wait_count <= 3'd0; // we clear the timer
-             
-            // character delivery to the trie engine:
+
+            // character delivery to the trie engine (pure valid/ready flow control):
             // trie_ready is 1 - meaning the trie engine can accept new characters
             // hold_valid is 1 - we have a character to send
             // hold_word_done is 0 - meaning we're not in the middle of sending a word_done signal
-            // word_done_ack_wait is 0 - meaning we are not waiting for the trie engine to finish processing a word_done signal
-            if (trie_ready && hold_valid && !hold_word_done && !word_done_ack_wait) begin
+            if (trie_ready && hold_valid && !hold_word_done) begin
                out_char <= hold_char; // we copy the character to the output which goes to the trie engine
                out_char_valid <= 1'b1; // we pulse that it is valid
                hold_valid <= 1'b0; // we signal that the holding register is empty
             end
-             
+
             // word-done delivery to the trie engine
+            // the boundary pulse is sent and the gate (word_boundary_busy = hold_word_done)
+            // drops immediately; the trie engine's ready line is the only backpressure, so no
+            // acknowledge handshake is needed. the trie engine lowers ready while it emits and
+            // captures any character that races into its single word-done cycle, so the next
+            // word's first character is never lost.
             if (hold_word_done) begin // if a word boundary needs to be signaled
                out_word_done <= 1'b1; // pulse that a word boundary is detected
                hold_word_done <= 1'b0; // clear the holding register's word
-               word_done_ack_wait  <= 1'b1; // we set this flag to wait for the trie engine to process the word boundary
-               trie_ready_seen_low <= 1'b0; // clear this flag, we haven't seen phase 1 yet
             end
             
             // accept from FIFO and map

@@ -128,6 +128,7 @@ module tokenizer_axi_lite #(
     wire tok_out_valid; // this indicated if emitted signal is a valid token (1) or not (0)
     wire [TOKEN_W-1:0] tok_out_data; // this carries the emitted token from the tokenizer pipeline
     wire tok_word_busy; // word boundary gate signal from the pre-tokenizer, indicating that the pre-tokenizer is waiting for the trie engine to acknowledge the boundary
+    wire tok_pipeline_busy; // high while the pre-tokenizer or trie engine still has work in flight (from top_tokenizer)
 
     reg out_fifo_rd_en; // single cycle pulse that triggers a FIFO read
 
@@ -174,8 +175,21 @@ module tokenizer_axi_lite #(
         // Output: to output FIFO
         .fifo_out_data      (tok_out_data),
         .fifo_out_valid     (tok_out_valid),
-        .word_boundary_busy (tok_word_busy) // comes back to gate the input FIFO during word boundaries.
+        .word_boundary_busy (tok_word_busy), // comes back to gate the input FIFO during word boundaries.
+        .pipeline_busy      (tok_pipeline_busy) // high while either pipeline stage still has work in flight
     );
+
+    // overall pipeline-busy: the tokenizer pipeline is working, OR a byte is still queued
+    // in the input FIFO / its output register, OR a token is still queued in the output FIFO,
+    // OR a token is being emitted this very cycle (tok_out_valid). The last term closes a
+    // one-cycle hole: when the engine emits its final token it also finalizes and goes idle,
+    // but the output-FIFO write is registered, so for that single cycle the token is in flight
+    // (not yet in the FIFO, engine already idle) and every other term reads 0. A poller landing
+    // there would see a false "idle" and stop one token early.
+    // exposed on STATUS bit 3 so the firmware can drain exactly until the hardware is idle
+    // instead of waiting a fixed delay. high until every byte has been consumed and every
+    // token produced has been read out.
+    wire pipeline_busy_all = tok_pipeline_busy || !in_fifo_empty || in_fifo_out_valid || !out_fifo_empty || tok_out_valid;
 
     // 3 helper registers - AXI-Lite write logic
     reg [C_S_AXI_ADDR_WIDTH-1:0] axi_awaddr_latched; // captures the write address when it arrives.
@@ -270,10 +284,14 @@ module tokenizer_axi_lite #(
                     2'b10: begin // corresponds to 0x08 (STATUS), meaning it is a STATUS register.
                         // bit 0 = ~in_fifo_full = 1, when it's safe to write (input FIFO has space).
                         // bit 1 = ~out_fifo_empty = 1 when a token is available to read.
-                        // bit 2 = out_fifo_overflow (M2): 1 if any token was dropped because the output
+                        // bit 2 = out_fifo_overflow: 1 if any token was dropped because the output
                         //         FIFO was full. Sticky; cleared by reset or by writing to STATUS (0x08).
-                        // This is what the C code's tok_can_write()/tok_has_token() (and an overflow check) read.
-                        s_axi_rdata <= {29'd0, out_fifo_overflow, ~out_fifo_empty, ~in_fifo_full};
+                        // bit 3 = pipeline_busy_all: 1 while any byte/word/token is still in flight
+                        //         anywhere in the pipeline or FIFOs. The firmware polls this to drain
+                        //         exactly until the hardware is idle instead of waiting a fixed delay.
+                        // This is what the C code's tok_can_write()/tok_has_token()/tok_pipeline_busy()
+                        // (and an overflow check) read.
+                        s_axi_rdata <= {28'd0, pipeline_busy_all, out_fifo_overflow, ~out_fifo_empty, ~in_fifo_full};
                     end
                     default: begin // reserved register returns 0.
                         // when no read is active, arready stays 0.

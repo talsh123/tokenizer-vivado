@@ -27,7 +27,13 @@ module trie_engine #(
 
     // downstream - to the output FIFO in tokenizer_axi_lite.v
     output reg [TOKEN_W-1:0] out_token_id, // the 16-bit result BERT token
-    output reg out_token_valid // a signal which pulses HIGH when a token is being emitted
+    output reg out_token_valid, // a signal which pulses HIGH when a token is being emitted
+
+    // high whenever the engine still has work to do on the current word. used by
+    // top_tokenizer to build the pipeline-busy status the firmware polls instead of
+    // a fixed delay. it stays high until the engine is genuinely idle: not in IDLE,
+    // not ready, replaying, or holding a latched-but-unprocessed word boundary.
+    output wire busy
 );
 
     // FSM (finite state machine) encoding
@@ -180,6 +186,22 @@ module trie_engine #(
     reg [CHAR_W-1:0] pending_char; // tracks the pending character
     reg pending_char_valid; // a flag if the pending character is valid
 
+    // busy status: high until the engine is genuinely idle (no word in progress, nothing in flight).
+    // (state != S_IDLE)      - walking the trie / emitting.
+    // !ready                 - ready is held low while emitting or replaying.
+    // replaying              - backtracking through buffered characters.
+    // word_done_pending      - a word boundary was latched but not yet finalized; this
+    //                          term closes the one-cycle window at a boundary where the
+    //                          input pulse has ended but the engine has not yet lowered ready.
+    // pending_char_valid     - a character is buffered in the input skid and will still produce a token.
+    // word_active            - a word is in progress: its characters have been accepted/replayed but the
+    //                          final piece is still held (has_best_match) waiting for the word boundary to
+    //                          emit it. Between finishing a multi-piece replay and the boundary arriving,
+    //                          the FSM sits in S_IDLE with ready high; without this term a poller sees a
+    //                          false "idle" and stops one token early. Cleared only at word finalize.
+    //                          (Assumes input is boundary-terminated, which the firmware guarantees.)
+    assign busy = (state != S_IDLE) || !ready || replaying || word_done_pending || pending_char_valid || word_active;
+
     // main FSM - the sequential logic
     always @(posedge clk) begin // this block executes on every rising clock edge
         if (rst) begin // on reset - everything zeros out except use_root = 1, we default to selecting the root trie
@@ -262,6 +284,11 @@ module trie_engine #(
                             end
                             // go to S_EMIT to output the token
                             // we deliberately do NOT clear word_done_pending here - S_EMIT needs to see it to know it should reset use_root for the next word.
+                            // hold ready low while we emit: with the pre-tokenizer's word-boundary
+                            // handshake removed, this is what stops the next word's first character
+                            // from being handed into S_EMIT (which does not latch input) and lost.
+                            // the one character that can arrive on this same cycle is captured above.
+                            ready <= 1'b0;
                             state <= S_EMIT;
                         end else begin // if we don't have a best match
                             // the word ended but no valid token was found
@@ -275,6 +302,7 @@ module trie_engine #(
                             // reset everything to the next word
                             use_root     <= 1'b1; // cleared
                             word_active  <= 1'b0; // cleared
+                            current_node <= {NODE_W{1'b0}}; // back to root node 0 for the next word
                             m_start      <= 5'd0; // cleared
                             scan_ptr     <= 5'd0; // cleared
                             buf_end      <= 5'd0; // cleared
@@ -318,6 +346,29 @@ module trie_engine #(
                             row_rd_addr <= current_node; // set the current node as the row we need to read from the BRAM
                             state <= S_ROW_WAIT; // we move to S_ROW_WAIT, waiting for the BRAM to return the node
                             ready <= 1'b0; // ready stays 0 because we're still busy replaying
+                        end
+
+                    // consume a character that was buffered while we were busy finalizing a word
+                    // boundary (the next word's leading character that raced in). this 1-deep skid
+                    // keeps that character from being lost now that the pre-tokenizer no longer holds
+                    // it back with a handshake. at most one character is ever in flight at a boundary.
+                    end else if (pending_char_valid) begin
+                        if (buf_end == BUF_DEPTH-1) begin
+                            word_too_long <= 1'b1; // buffer full: discard, same guard as the normal intake below
+                            pending_char_valid <= 1'b0;
+                        end else begin
+                            word_active <= 1'b1; // we are inside the next word
+                            target_char <= pending_char; // search for the buffered character
+                            char_buf[buf_end[4:0]] <= pending_char; // store it in the backtracking buffer
+                            buf_end <= buf_end + 1'b1; // advance the write pointer
+                            row_rd_addr <= current_node; // issue the BRAM read for the current node
+                            state <= S_ROW_WAIT; // go process it through the trie
+                            ready <= 1'b0; // busy now
+                            pending_char_valid <= 1'b0; // consumed
+                            if (in_char_valid) begin // another character arrived this cycle; keep it buffered
+                                pending_char <= in_char;
+                                pending_char_valid <= 1'b1; // last assignment wins over the clear above
+                            end
                         end
 
                     // this is the normal operation - meaning there is no word_done, and we aren't backtracking
@@ -470,16 +521,27 @@ module trie_engine #(
                                 scan_ptr <= 5'd0; // cleared
                                 buf_end <= 5'd0; // cleared
                                 
-                                if(pending_char_valid) begin // immediately check if a character from the next word was captured earlier
+                                // immediately start the next word if its first character is already here.
+                                // it was either captured a cycle earlier (pending_char) OR is arriving on
+                                // this very cycle (in_char_valid). a character can race in while we finalize
+                                // this boundary; with no pre-tokenizer handshake holding it back, accepting
+                                // it here is what stops the next word's leading character from being dropped.
+                                if (pending_char_valid || in_char_valid) begin
                                     word_active <= 1'b1; // we set the word_active flag to 1, indicating that we are in the middle of a word
-                                    target_char <= pending_char; // set the target character to search for from the incoming character
-                                    char_buf[0] <= pending_char; // set the first character of the character buffer as the incoming character
+                                    target_char <= pending_char_valid ? pending_char : in_char; // prefer the earlier-captured character
+                                    char_buf[0] <= pending_char_valid ? pending_char : in_char; // first character of the next word
                                     buf_end <= 5'd1; // sets the pointer to the end of the buffer to 1
                                     row_rd_addr <= {NODE_W{1'b0}}; // set the address row to the root node 0
-                                    pending_char_valid <= 1'b0; // set the pending character flag to 0 because we've consumed it
-                                    ready    <= 1'b0; // not ready - we're processing pending char
+                                    pending_char_valid <= 1'b0; // the buffered/live character is now consumed
+                                    ready    <= 1'b0; // not ready - we're processing this character
                                     state    <= S_ROW_WAIT; // go process it through the trie
-                                end else begin // if there is no pending character
+                                    // if BOTH a captured character and a fresh one arrived this cycle, keep the
+                                    // fresh one in the holding register (consumed by the S_IDLE skid next).
+                                    if (pending_char_valid && in_char_valid) begin
+                                        pending_char <= in_char;
+                                        pending_char_valid <= 1'b1; // last assignment wins over the clear above
+                                    end
+                                end else begin // if there is no next-word character yet
                                     ready <= 1'b1; // set the ready flag to 1, indicating we are ready for a new character
                                     state <= S_IDLE; // jump to S_IDLE
                                 end

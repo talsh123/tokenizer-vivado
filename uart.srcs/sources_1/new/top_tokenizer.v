@@ -25,7 +25,12 @@ module top_tokenizer #(
     output wire fifo_out_valid, // a flag which is 1 if a token ID is valid, otherwise 0
     
     // goes to tokenizer_axi_lite.v
-    output wire word_boundary_busy // gates the input FIFO, comes from the pre_tokenizer.v
+    output wire word_boundary_busy, // gates the input FIFO, comes from the pre_tokenizer.v
+
+    // goes to tokenizer_axi_lite.v - high while anything is still in flight in either stage
+    // (pre-tokenizer or trie engine). the AXI wrapper combines this with the FIFO states to
+    // form the pipeline-busy status the firmware polls instead of waiting a fixed delay.
+    output wire pipeline_busy
 );
 
     // internal wires: these connect the pre_tokenizer.v outputs to trie_engine.v inputs
@@ -34,9 +39,14 @@ module top_tokenizer #(
     wire pt_out_word_done; // carries the signal when the pre_tokenizer.v outputs word_done to the trie_engine.v
     wire trie_ready; // a signal which comes from trie_engine.v to the pre_tokenizer.v which represents when the trie_engine is ready to receive new characters.
     wire pt_word_boundary_busy; // a signal which indicates for the input FIFO that the pre-tokenizer is busy waiting for the trie engine to acknowledge the word boundary.
-    
+    wire pt_busy;   // pre-tokenizer has a character/boundary in flight
+    wire trie_busy; // trie engine is still working on the current word
+
     // connect the top tokenizer output ports to the pre-tokenizer instance
     assign word_boundary_busy = pt_word_boundary_busy; // this signals from the pre_tokenizer.v to the top_tokenizer.v to tell the input FIFO to stop sending more characters. the trie_engine hasn't acknowledged the word boundary.
+
+    // pipeline is busy while either stage still has work in flight
+    assign pipeline_busy = pt_busy || trie_busy;
     
     // pre-tokenizer instance
     pre_tokenizer #(
@@ -58,7 +68,8 @@ module top_tokenizer #(
         
         // signals back from the trie engine to the pre-tokenizer
         .trie_ready (trie_ready), // a signal which represents if the trie engine is ready to receive new characters (1) or busy (0)
-        .word_boundary_busy (pt_word_boundary_busy) // this signal goes to tokenizer_axi_lite.v, indicating the that the pre-tokenizer is waiting for the trie_engine to acknowledge the word boundary, and to gate the input FIFO.
+        .word_boundary_busy (pt_word_boundary_busy), // this signal goes to tokenizer_axi_lite.v, indicating the that the pre-tokenizer is waiting for the trie_engine to acknowledge the word boundary, and to gate the input FIFO.
+        .pt_busy (pt_busy) // high while the pre-tokenizer still has a character or boundary in flight
     );
     
     // trie engine instance
@@ -78,6 +89,7 @@ module top_tokenizer #(
     
         // these get sent downstream - from the trie engine to the output FIFO
         .out_token_id (fifo_out_data), // the 16-bit token ID
-        .out_token_valid(fifo_out_valid) // a flag which represents if the token ID is valid (1) or not (0)
+        .out_token_valid(fifo_out_valid), // a flag which represents if the token ID is valid (1) or not (0)
+        .busy (trie_busy) // high while the trie engine is still processing the current word
     );
 endmodule
