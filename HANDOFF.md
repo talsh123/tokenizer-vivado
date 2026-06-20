@@ -5,44 +5,71 @@ Paste this into the new chat, or just tell the new chat: "read HANDOFF.md and co
 
 ---
 
-## ⭐ CURRENT STATUS (latest — read this first; the RTFC below is the original, now stale)
+## ⭐ CURRENT STATUS — 2026-06-20 (read this first; the RTFC below is the original, now stale)
 
-**Project moved** to `C:\Users\talsh\.Xilinx\projects\uart` (was under a non-synced
-`...\OneDrive\...` folder; no actual OneDrive). All edits go here now.
+**The entire code review is DONE and VERIFIED ON SILICON — H1, H2, M1, M2, M3, M4, P1, L1, L2, L3 —
+plus the embed-class boundary fix and two synthesis-warning cleanups.** Full per-problem record with
+verification evidence is in `JOURNAL.md`. Headlines:
 
-**DONE & verified in Vivado behavioral sim (xsim):** H1, H2, M1, M2, **P1** (pre-tok pure
-valid/ready + trie input skid), **M4** (`pipeline_busy` STATUS bit 3 incl. `tok_out_valid`
-emit-cycle term), and the **embed boundary char-drop fix** (S_EMIT replay-launch capture).
-Full `tb_axi_pipeline` is green incl. slow-cadence tests (`embed (slow)`, `embed hardware
-(slow)`). Timing closes clean.
+- **RTL** (`trie_engine.v`, `pre_tokenizer.v`, `tokenizer_axi_lite.v`): H1/H2/M1 (trie greedy-match
+  corner cases), M2 (output-FIFO overflow detect, STATUS bit 2), P1 (pure valid/ready flow control +
+  trie input skid + boundary char capture — closes the wasted-handshake-cycles issue), M4 RTL
+  (`pipeline_busy` STATUS bit 3), L3 (AXI read `read_addr_serviced` gate), plus the char_buf and
+  tok_word_busy synthesis-warning cleanups.
+- **Firmware** `echo.c`: M3 (raw-byte forwarding, no synthetic boundary) + M4 (drain-on-
+  `pipeline_busy`, boundary-aware final drain — the blind ~500 µs delay is gone).
+- **Memory generator** `vocab_parser.py` (in `...\OneDrive\...\BERT\flat_trie_compression`): L1
+  (token-id `.mem` written 4-hex to match the 16-bit register).
+- **Verification:** `tb_axi_pipeline` green (slow-cadence + new digit cases included); full xsim suite
+  passes; **on-board over TCP every known vector is correct** and `2024`→`16798 2549`,
+  `abc123`→`5925 12521 2509` match sim exactly with no `[UNK]`. Timing closes clean; the 32 char_buf
+  and the token-id width synth warnings are gone.
 
-**Firmware `echo.c` (Vitis project `C:\Users\talsh\Vitis\final_project_eth_nexys_video`):**
-M3 (raw-byte forwarding, no synthetic boundary) + M4 (`tok_pipeline_busy()`, drain-while-
-sending, boundary-aware final drain) + multi-line-output fix (append `\r\n` only when the
-segment ended on a boundary). On-board: ethernet up, normal words correct, M4 latency floor gone.
+**The embed `[UNK]` "open issue" from the previous handoff is RESOLVED — and it was never an RTL
+bug.** The board was running a STALE bitstream: the Vitis run configuration programs a cached
+`lwip_echo_server/_ide/bitstream/design_1_wrapper.bit` (it was a month old) while loading a fresh
+ELF. **Lesson for next time: when on-board behavior contradicts a clean xsim run, suspect the
+programmed bitstream first** — point the Vitis launch config at `uart.runs/impl_1/design_1_wrapper.bit`.
 
-**BSP PHY patches — RE-APPLY AFTER EVERY BSP REGEN (they get wiped):** `xadapter.c`
+**BSP PHY patches — RE-APPLY AFTER EVERY BSP REGEN (a `.xsa` re-read wipes them):** `xadapter.c`
 (`axieth_link_status` first_link/hardcode-100) and `xaxiemacif_physpeed.c` (`get_IEEE_phy_speed`
-Realtek `0x001c` branch). Full verbatim code is preserved in the maintainer's separate engineering
-notes. A BSP regen on 2026-06-20 wiped them again — confirm before each board build.
+Realtek `0x001c` branch). Confirm before every board build.
 
-**OPEN ISSUE — board-only spurious `[UNK]` (token 100) on "embed"-class words:** the board
-returns `embed ` → `7861 8270 100` (and `embed hardware` → `7861 8270 100 8051`), but
-**behavioral sim is clean at every byte cadence** (no `has_best=0` cycle). Synthesis log confirms
-all 9 `.mem` BRAM inits loaded OK, bitstream timestamps are post-fix, and `.mem` copies match —
-so it's NOT data loss/stale-source by those checks. Working theory: stale synthesized RTL from
-Vivado caching, OR a synthesis/hardware behavioral difference. **NEXT STEP:** clean rebuild at the
-new path (Reset Synthesis+Implementation to force full re-read → re-synth → re-impl → bitstream),
-re-apply BSP patches, reprogram, re-test `embed`. If it persists: post-implementation timing sim
-(the tokenizer is the OOC IP `design_1_tokenizer_axi_lite_0_0`, so it has a netlist) or an ILA on
-`out_token_valid`/`out_token_id` triggered on token==100.
+---
 
-**Vivado gotchas hit this session (not a sync issue — no OneDrive):** the editor buffer can
-overwrite disk on sim launch; xsim reuses stale compiled snapshots. Always **Reset** the sim/run
-to force a real recompile; close a file in the editor before editing it externally.
+## 🔜 OPEN ITEMS — handoff to Rafi
 
-**`tb_axi_pipeline.v` has a temp debug probe + slow tests (Test 7/8)** — fine to keep for now;
-remove the `===== TEMP DEBUG PROBE =====` block for the final clean version.
+**MUST DO (the one outstanding must — start here): DMA instead of byte-by-byte AXI-Lite polling.**
+This is optimization **R2** in `OPTIMIZATION_OPTIONS.md`. Now that M4 removed the blind delay, the
+dominant on-board cost is the per-byte MMIO loop: the MicroBlaze spends ~50–100 cycles of software
+overhead per byte in `tok_send_byte()` (poll STATUS, write TX_DATA), so a 43-char line takes ~1.1 ms
+even though the fabric tokenizes in ~10 µs. Replace the byte-banging with an **AXI-Stream** interface
+on the tokenizer IP + an **AXI DMA** (or AXI4 burst) so input bytes stream in and tokens stream out
+at ~1/clock with no per-element CPU involvement. Scope: block-design change (add DMA + AXI-Stream
+ports on the IP), `echo.c` rewrite (DMA descriptors instead of the send/drain loops), and a full
+re-verify against the HuggingFace golden vectors. Detail + the output-regression checklist are in
+`OPTIMIZATION_OPTIONS.md` (R2, with F2/F3 as related smaller wins).
+
+**OPTIONAL — NOT required for the final report (do only if time allows):**
+- **Connect `init_calib_complete`** in the Vivado block design (currently floating). Wiring it in —
+  e.g. gating the processor/system reset — prevents the CPU touching DDR3 before the MIG finishes
+  calibration. Real robustness fix, BD-level.
+- **`tb_perf_measurement` Test 2 = 16 tokens vs 15** — a simulation-only timing artifact (hardware
+  gives the correct 15). Either fix the TB timing or document it explicitly as known sim-only.
+- **Elegant RTL8211E PHY bring-up** — the BSP patches are the pragmatic fix; a proper fix implements
+  the full RTL8211E auto-negotiation register sequence so the stock-BSP-vs-RTL8211E mismatch is
+  handled cleanly. Future work / report discussion only.
+- **Relocate the 9 `.mem` files out of `C:/Users/talsh/Downloads/`** into the project tree. The
+  `.xpr` sources them from `$PPRDIR/../../../Downloads/*.mem` — functional but fragile (a cleared
+  Downloads folder breaks the build). Recommended before final submission.
+- Cosmetic: remove the `===== TEMP DEBUG PROBE =====` block in `tb_axi_pipeline.v` for the final
+  clean version (kept for now; harmless).
+
+**Vivado/Vitis gotchas (still apply):** the editor buffer can overwrite disk on sim launch and xsim
+reuses stale compiled snapshots — **Reset** the sim/run to force a real recompile, and close a file
+in the Vivado editor before editing it externally. After any RTL change: regenerate the bitstream,
+re-export the `.xsa`, AND re-point the Vitis launch config at the fresh
+`impl_1/design_1_wrapper.bit` before programming (re-applying the BSP PHY patches after the BSP regen).
 
 ---
 

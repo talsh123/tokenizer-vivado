@@ -12,10 +12,16 @@ Grounded in the actual RTL:
 the CSR generator [vocab_parser.py](tokenizer-csr/vocab_parser.py),
 and the MicroBlaze driver [echo.c](tokenizer-vitis/lwip_echo_server/src/echo.c).
 
-> **Headline finding:** the biggest wall-clock cost in the whole system is **not** in
-> the fabric — it's the `for (volatile int d = 0; d < 50000; d++);` blind delay at
-> [echo.c:161](tokenizer-vitis/lwip_echo_server/src/echo.c#L161): ~500 µs per packet
-> against a ~10 µs tokenization. Fix that first (option **F1**).
+> **Headline finding (original):** the biggest wall-clock cost was the
+> `for (volatile int d = 0; d < 50000; d++);` blind delay at
+> [echo.c:161](tokenizer-vitis/lwip_echo_server/src/echo.c#L161): ~500 µs per packet against
+> a ~10 µs tokenization.
+>
+> **✅ UPDATE (2026-06-20): F1 is DONE** — shipped as review item **M4**. The blind delay is
+> replaced by a `pipeline_busy` STATUS bit (bit 3) plus drain-while-sending; the per-packet floor is
+> gone and latency now scales with token count (a 0-token segment is ~25 µs, ~140 µs/token after).
+> **The new dominant on-board cost is the per-byte MMIO loop** — see **R2 (DMA)**, which is now the
+> next priority and the handoff item for the next engineer (Rafi).
 
 ---
 
@@ -23,7 +29,7 @@ and the MicroBlaze driver [echo.c](tokenizer-vitis/lwip_echo_server/src/echo.c).
 
 | #  | Option | Dimension | Est. benefit | Effort | Risk |
 |----|--------|-----------|--------------|--------|------|
-| F1 | Replace the 500 µs SW busy-wait with a "pipeline-busy" STATUS bit + drain loop | (f) system | **~25–50× end-to-end** (510 µs → ~10–20 µs) | XS (1 RTL bit + 3 C lines) | Low |
+| F1 ✅**DONE** (=M4) | Replace the 500 µs SW busy-wait with a "pipeline-busy" STATUS bit + drain loop | (f) system | **delivered: ~25–50× end-to-end** (blind floor removed) | XS (1 RTL bit + C) | Low |
 | C1 | Direct-indexed first-character table for each trie root node | (a)(c) trie | First char/word ~35→~4 cyc; ~20–25% off total trie cycles | S–M | Low* |
 | A1 | Fold `is_terminal`+`token_id` into the edge record (kill the terminal read) | (a)(b)(d) | −2 cyc/char; frees the whole `is_terminal` BRAM | M | Low* |
 | A2 | Merge S_EVAL with next-midpoint issue (3→2 cyc per probe) | (a)(b) | −1 cyc per binary-search probe (~−⅓ of search) | S | Low |
@@ -32,7 +38,7 @@ and the MicroBlaze driver [echo.c](tokenizer-vitis/lwip_echo_server/src/echo.c).
 | F2 | Skip per-byte STATUS poll for inputs ≤ FIFO depth (write-only fast path) | (f) system | ~½ the send-phase AXI reads | S | Low |
 | E1 | BRAM output-register / pipeline FSM arithmetic for higher fmax | (e) fmax | Headroom toward 150–200 MHz | M | Med |
 | R1 | Hybrid "fat node" format: inline edges + parallel compare for small nodes | (a)(c) | Most chars → ~3–4 cyc, no search loop | M–L | Med* |
-| R2 | AXI-Stream + DMA instead of MMIO byte-banging | (f) system | High for large inputs; frees CPU | L | Med |
+| R2 ⭐**NEXT / handoff** | AXI-Stream + DMA instead of MMIO byte-banging | (f) system | **now the dominant on-board cost** (~50–100 cyc/byte MMIO); high | L | Med |
 | F3 | Interrupt-driven output drain instead of polling | (f) system | CPU offload, multi-conn scaling | M | Low |
 
 \* = output-preserving *by construction* but touches table format or search logic, so
@@ -44,7 +50,11 @@ it must be re-verified against the HuggingFace golden vectors. See [§4](#4-outp
 
 ### (f) System-level throughput — *this is where the wall-clock time actually is*
 
-**F1 — Kill the 500 µs busy-wait (do this first; it dwarfs everything else).**
+**F1 — Kill the 500 µs busy-wait. ✅ DONE — shipped as review item M4.** Implemented exactly as
+described below: a `pipeline_busy` STATUS bit (bit 3) in `tokenizer_axi_lite.v` plus a
+`while (tok_pipeline_busy() || tok_has_token()) drain;` loop and drain-while-sending in `echo.c`.
+The blind delay is removed; per-packet latency now scales with the work. The original write-up is
+kept below for the report record.
 [echo.c:161](tokenizer-vitis/lwip_echo_server/src/echo.c#L161) spins ~50,000
 iterations (~500 µs) after sending bytes, "to give the hardware time," then drains
 with `while(tok_has_token())`. The blind delay exists only because there's no way to
@@ -70,12 +80,28 @@ polling; otherwise chunk in ≤256 blocks with one space-check per block. **Bene
 ~halves send-phase AXI transactions. **Effort:** small. **Risk:** low (must keep the
 chunking guard for >256).
 
-**R2 — AXI-Stream + DMA instead of MMIO (larger).** Today the CPU moves one byte / one
-token per AXI-Lite beat. For large documents this is the ceiling. Adding an AXI-Stream
-slave/master on the IP and a DMA (or even just AXI4 burst) lets the buffer stream in/out
-without per-element CPU involvement. **Benefit:** high for big inputs and frees the CPU
-for TCP. **Effort:** large (block-design + driver rework). **Risk:** medium. Lower
-priority than F1/F2 for the current short-text workload.
+**R2 — AXI-Stream + DMA instead of MMIO. ⭐ NEXT PRIORITY — handoff item for Rafi.** With F1/M4
+done, this is now the dominant on-board cost and the single "must-do" remaining. Today the CPU moves
+one byte / one token per AXI-Lite beat, spending ~50–100 MicroBlaze cycles of software overhead per
+byte (poll STATUS, write `TX_DATA`); a 43-char line measured ~1.1 ms end-to-end against ~10 µs of
+actual fabric tokenization — i.e. the system is **MMIO-bound, not fabric-bound**. **Mechanism:** add
+an AXI-Stream slave (input) and master (output) on the tokenizer IP, drop an AXI DMA (or AXI4 burst
+master) into the block design, and rewrite `echo.c` to hand the RX buffer to a DMA descriptor
+instead of the `tok_send_byte()` loop and to drain tokens via a DMA S2MM transfer instead of the
+per-token `RX_DATA` reads. Bytes then stream in / tokens stream out at ~1 per clock with no
+per-element CPU involvement. **Benefit:** removes the per-byte software tax — the win grows with
+input length and frees the CPU for TCP. **Effort:** large (block-design + IP port changes + driver
+rewrite + re-verify). **Risk:** medium. **Handoff notes for whoever picks this up:**
+- The tokenizer IP today exposes only AXI-Lite (`tokenizer_axi_lite.v`); the FIFOs inside it
+  (`in_fifo`/`out_fifo`) are the natural attach points for AXI-Stream — feed the input FIFO from an
+  S2MM-style stream and source the output FIFO to an MM2S-style stream, keeping the existing
+  pre-tokenizer/trie pipeline untouched so **token IDs stay identical**.
+- Keep `pipeline_busy` (M4) — DMA still needs a "tokenization complete" signal to know when the last
+  token has been produced before the S2MM drain.
+- **Re-verify against the full HuggingFace golden vectors** after the rewrite (see [§4](#4-output-regression-risk--verify-carefully)); the datapath that produces IDs does not change, but the
+  framing/length handling in firmware does, so confirm multi-word, `[UNK]`, and >256-char cases.
+- **F2** (write-only fast path) and **F3** (interrupt-driven drain) below are smaller, lower-risk
+  stepping stones if a full DMA integration is too big for the timeline.
 
 **F3 — Interrupt-driven drain.** Route output-FIFO-non-empty (or F1's pipeline-done) to
 a MicroBlaze interrupt so the CPU isn't spinning. Mostly helps multi-connection scaling
@@ -186,12 +212,19 @@ worth it.
 
 ## 3. Closing split
 
-### Quick wins (do now — small, low-risk, high return)
-- **F1** — pipeline-busy STATUS bit + drained wait loop. *Biggest single win in the
-  whole system (~25–50× end-to-end), ~1 RTL bit + 3 C lines.*
+### Done
+- **F1** ✅ — pipeline-busy STATUS bit + drained wait loop, shipped as review item **M4**. The blind
+  ~500 µs per-packet floor is gone; latency now scales with token count.
+
+### Next priority — the handoff "must-do"
+- **R2** — AXI-Stream/DMA datapath. With F1 done, the per-byte MMIO loop is the dominant on-board
+  cost (~50–100 cyc/byte software overhead); this is the single must-do optimization remaining.
+  See the R2 detail above for the mechanism and handoff notes.
+
+### Quick wins (small, low-risk, high return)
 - **A2 + A3** — restructure the search FSM to 2 cyc/probe and drop `S_CALC_MID`. Pure
   RTL, output-identical, no table change.
-- **F2** — write-only fast path for ≤256-char inputs.
+- **F2** — write-only fast path for ≤256-char inputs (a smaller stepping-stone toward R2).
 - **D1** (standalone variant) — terminal bit into `token_id`'s spare top bit; frees ~a
   dozen+ RAMB36.
 
@@ -202,7 +235,6 @@ worth it.
   layout change).
 - **R1** — hybrid fat-node format with parallel compare (removes the search loop for
   most chars).
-- **R2** — AXI-Stream/DMA datapath (for large inputs / CPU offload).
 
 ### Open questions to sharpen the estimates
 1. **Post-route Vivado timing report** — what's the current critical path and slack at

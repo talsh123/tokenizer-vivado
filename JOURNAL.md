@@ -753,6 +753,28 @@ recommended before final submission.)
 
 ---
 
+## Session close-out (2026-06-20) and open items handed off
+
+**Complete and verified on silicon:** every code-review item — H1, H2, M1, M2, M3, M4, P1, L1, L2,
+L3 — plus the embed-class boundary fix and the char_buf / tok_word_busy synthesis-warning cleanups.
+The previous "board-only spurious `[UNK]`" open issue was diagnosed as a stale Vitis-programmed
+bitstream (the RTL was always correct) and is closed. Two of the original "must-do before
+presentation" notes map directly to delivered work: the busy-wait/blind-delay removal is **M4**, and
+the wasted pre-tokenizer handshake cycles are **P1** — both done and verified on-board.
+
+**Handed off (see `HANDOFF.md` → "OPEN ITEMS" and `OPTIMIZATION_OPTIONS.md`):**
+- **MUST DO — DMA instead of byte-by-byte AXI-Lite polling (optimization R2).** With M4's blind
+  delay gone, the per-byte MMIO software overhead (~50–100 cyc/byte) is the dominant on-board cost
+  (~1.1 ms for a 43-char line vs ~10 µs of fabric work). Replace the byte-banging with an AXI-Stream
+  interface on the IP + an AXI DMA. This is the next engineer's primary task.
+- **Optional, not required for the final report:** connect the floating `init_calib_complete` in the
+  block design; resolve `tb_perf_measurement` Test 2 (16 vs 15 tokens — a sim-only timing artifact)
+  by fixing the TB or documenting it; implement the full RTL8211E PHY register sequence (the BSP
+  patches are the pragmatic fix); relocate the 9 `.mem` files out of `Downloads/` into the project
+  tree; and remove the `tb_axi_pipeline.v` temp debug probe for the final clean version.
+
+---
+
 ## Problem M3 — Every TCP segment treated as word-final (firmware)
 
 ### Engineering field
