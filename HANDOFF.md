@@ -23,8 +23,8 @@ segment ended on a boundary). On-board: ethernet up, normal words correct, M4 la
 
 **BSP PHY patches — RE-APPLY AFTER EVERY BSP REGEN (they get wiped):** `xadapter.c`
 (`axieth_link_status` first_link/hardcode-100) and `xaxiemacif_physpeed.c` (`get_IEEE_phy_speed`
-Realtek `0x001c` branch). Full verbatim code is in `.claude-memory/vitis-bsp-phy-patches.md`
-(and Claude memory). A BSP regen on 2026-06-20 wiped them again — confirm before each board build.
+Realtek `0x001c` branch). Full verbatim code is preserved in the maintainer's separate engineering
+notes. A BSP regen on 2026-06-20 wiped them again — confirm before each board build.
 
 **OPEN ISSUE — board-only spurious `[UNK]` (token 100) on "embed"-class words:** the board
 returns `embed ` → `7861 8270 100` (and `embed hardware` → `7861 8270 100 8051`), but
