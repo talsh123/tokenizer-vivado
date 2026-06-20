@@ -256,6 +256,45 @@ module tb_axi_pipeline;
         end
     endtask
 
+    // L2: digit / alphanumeric coverage. Plain a-z/0-9 input can never legitimately produce
+    // [UNK] (token 100) -- every single character is itself a token -- so this checks the
+    // invariant (no 100, at least one token, pipeline returns idle) without needing reference IDs.
+    // Digits map to alphabet indices below the letters, so this also exercises the binary-search
+    // lower bound that H2 hardened.
+    task check_no_unk;
+        input [8*40-1:0] name;
+        integer j;
+        reg pass;
+        reg [31:0] st;
+        begin
+            pass = 1'b1;
+            if (ntok == 0) begin
+                $display("  [%s] FAIL: no tokens produced", name);
+                pass = 1'b0;
+            end
+            for (j = 0; j < ntok; j = j + 1)
+                if (captured[j] === 16'd100) begin
+                    $display("  [%s] FAIL: spurious [UNK] (100) at token %0d", name, j);
+                    pass = 1'b0;
+                end
+            axi_read(ADDR_STATUS, st);
+            if (st & 32'h2) begin
+                $display("  [%s] FAIL: token still available after drain (STATUS=0x%08x)", name, st);
+                pass = 1'b0;
+            end
+            if (st & 32'h8) begin
+                $display("  [%s] FAIL: pipeline still busy after drain (STATUS=0x%08x)", name, st);
+                pass = 1'b0;
+            end
+            if (pass) begin
+                $write("  [%s] PASS (%0d tokens, no [UNK]) ->", name, ntok);
+                for (j = 0; j < ntok; j = j + 1) $write(" %0d", captured[j]);
+                $display("");
+            end else
+                total_errors = total_errors + 1;
+        end
+    endtask
+
     // ------------------------------------------------------------------ stimulus
     initial begin
         aresetn = 1'b0;
@@ -320,6 +359,13 @@ module tb_axi_pipeline;
         send_sentence_slow("embed hardware ", 15);
         expected[0]=16'd7861; expected[1]=16'd8270; expected[2]=16'd8051;
         check_tokens("embed hardware (slow)", 3);
+
+        // Test 9 - digit / alphanumeric coverage (L2). Pure a-z/0-9 words must tokenize with no
+        // [UNK]; exercises digit alphabet indices (below the letters) through the trie search.
+        send_sentence("2024 ", 5);
+        check_no_unk("digits 2024");
+        send_sentence("abc123 ", 7);
+        check_no_unk("alnum abc123");
 
         // M4 sanity: STATUS bit 3 must have actually asserted during the run
         // (otherwise the drain would be relying on bit 1 alone / the bit is stuck low).

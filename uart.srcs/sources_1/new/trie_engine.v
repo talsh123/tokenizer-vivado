@@ -155,14 +155,14 @@ module trie_engine #(
     reg [TOKEN_W-1:0] best_match_tid; // this holds the token ID of the longest match we have found so far
     reg [4:0] best_end; // the position of where the longest-matching token ends
 
-    // backtracking buffer
-    // this line declares a 32-entry array, each entry 10 bits wide.
-    // "distributed" tells Vivado to implement this is LUTRAM instead of BRAM.
-    // this is a small array (32 x 10 = 320 bits) and LUTRAM provides combinational read access:
-    // meaning address comes in and data comes out in the same clock cycle with no delay. BRAM requires a 1 cycle latency.
-    // this array stores the characters that come from the pre-tokenizer.
-    // when backtracking is needed, characters are replayed from this buffer without needing to re-read the input FIFO.
-    (* ram_style = "distributed" *) reg [CHAR_W-1:0] char_buf [0:BUF_DEPTH-1];
+    // backtracking buffer: a small 32 x 10-bit array (320 bits) that stores the characters of the
+    // current word so they can be replayed from here (without re-reading the input FIFO) when the
+    // engine backtracks. It is read combinationally (address in, data out the same cycle).
+    // The synthesizer implements it as flip-flops: the mix of variable-index writes
+    // (char_buf[buf_end]) with the constant-index write (char_buf[0]) at a word boundary prevents
+    // distributed-RAM (LUTRAM) inference, so the ram_style hint is intentionally omitted to avoid an
+    // ignored-attribute warning. Behavior is identical either way (synchronous write, async read).
+    reg [CHAR_W-1:0] char_buf [0:BUF_DEPTH-1];
 
     // 3 pointers to manage the character buffer, all are 5 bits, 2^5 = 32 values
     reg [4:0] m_start; // this is the start position of the current token search within the buffer.

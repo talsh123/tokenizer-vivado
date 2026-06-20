@@ -681,6 +681,69 @@ behavior contradicts a clean xsim run, suspect the programmed bitstream before t
 
 ---
 
+## Low-priority review items (L1–L3) and a synthesis-warning cleanup
+
+### L1 — `.mem` token-id width does not match the register width
+**Engineering field:** hardware/data-representation consistency. `trie_engine.v` reads the token-id
+memories into a 16-bit register (`TOKEN_W = 16`), but the Python generator
+(`flat_trie_compression/vocab_parser.py`, `flatten_csr`) wrote each entry as **8 hex digits**
+(`{tid:08X}`, 32 bits). Vivado loads it correctly (it truncates the all-zero high half, and every
+BERT id ≤ 30521 < 65536 fits in 16 bits), but the wider-than-register `$readmemh` provokes a
+warning. **Fix:** write token ids as **4 hex digits** (`{tid:04X}`, and `0000` for the
+non-terminal `-1` sentinel) so the file width equals the register width. The loaded BRAM contents
+are **bit-identical** to before, so tokenization is unchanged — only the warning goes away.
+*Applying it:* re-run `vocab_parser.py`, replace `root_token_ids.mem` / `cont_token_ids.mem` in the
+Vivado project, re-synthesize. (Only the two token-id files change; row_ptr/edges/is_terminal are
+untouched.) The other width note — `char_to_index_map.mem` at 4 hex into a 10-bit register — cannot
+be made exact (10 bits is not nibble-aligned) and is harmless, so it is left as-is.
+
+### L3 — AXI read could re-pop the output FIFO if a master holds `arvalid` high
+**Engineering field:** AXI4-Lite slave protocol robustness. The read FSM in `tokenizer_axi_lite.v`
+accepted a read whenever `arvalid && !rvalid`. A compliant master (the MicroBlaze) deasserts
+`arvalid` after the handshake, so each `RX_DATA` read pops one token — but a master that *holds*
+`arvalid` high across/after the response would be re-accepted once `rvalid` cleared, popping a
+second token and **silently dropping** it. **Fix:** added `read_addr_serviced`, set when a read is
+accepted and cleared only once `arvalid` deasserts; the accept condition now also requires
+`!read_addr_serviced`. One `arvalid` assertion therefore yields exactly one FIFO pop. Normal
+single-beat reads are unaffected (the flag clears as soon as the master drops `arvalid`).
+
+### char_buf synthesis warning (not in the original review; found during the embed debug)
+`char_buf` carried `(* ram_style = "distributed" *)`, but the mix of variable-index writes
+(`char_buf[buf_end]`) and the constant-index write (`char_buf[0]`) at a word boundary prevents
+distributed-RAM inference, so Vivado **ignored** the attribute and emitted 32 warnings while
+implementing the array as flip-flops. The attribute was removed (and the comment corrected): the
+synthesized result is **identical** (flip-flops, synchronous write / asynchronous read), and the
+warnings are gone. A true-LUTRAM refactor (single muxed write port) is possible but would touch the
+verified datapath for no functional gain, so it was not done.
+
+### L2 — testbench coverage gap (digits)
+**Engineering field:** functional-verification completeness. Existing tests covered `[UNK]`,
+over-long words, and overflow, but not digit input. Added a `check_no_unk` invariant task and a
+digit/alphanumeric case to `tb_axi_pipeline.v` (`2024`, `abc123`): plain a–z/0–9 input can never
+legitimately produce `[UNK]` (100), so the test asserts no `100`, at least one token, and a fully
+idle pipeline — without needing reference ids. Digits map to alphabet indices below the letters, so
+this also exercises the binary-search lower bound that **H2** hardened.
+
+*Status:* all four edits applied. **`tb_axi_pipeline` re-run is green (`AXI PIPELINE TESTS
+PASSED`)**, which validates L2, L3 and the char_buf change in behavioral sim in one shot: the new
+digit cases pass (`2024` -> `16798 2549`, `abc123` -> `5925 12521 2509`, no `[UNK]`); the many AXI
+reads through the new `read_addr_serviced` gate (L3) all return correct tokens; and every prior
+vector is unchanged (`embed` -> `7861 8270`, pangram = 9, etc.), confirming the char_buf
+attribute removal is behavior-neutral. **VERIFIED on-board.** After regenerating the 4-hex
+`*_token_ids.mem`, re-synthesizing (the 32 char_buf `[Synth 8-7186]` warnings and the token-id
+width warning are gone), rebuilding the bitstream and reprogramming, the full vector set is
+unchanged on silicon (`embed` -> `7861 8270`, `embed hardware` -> `7861 8270 8051`, `embedding`,
+`unquestionably`, `hello hardware`, the 9-word pangram all correct), and the digit/alphanumeric
+cases match the xsim values exactly with no `[UNK]` (`2024` -> `16798 2549`, `abc123` ->
+`5925 12521 2509`) -- confirming the L1 memory regeneration is correct and digit handling is good on
+hardware. M3 split (`embed`+`ding` -> `7861 8270 4667`, no hang) and M4 latency scaling also still
+hold. All review items H1, H2, M1-M4, P1 and L1, L2, L3 plus the char_buf cleanup are now verified
+on silicon. (Residual robustness note: the project still sources its 9 `.mem` files from
+`C:/Users/talsh/Downloads/` -- functional but fragile; relocating them into the project tree is
+recommended before final submission.)
+
+---
+
 ## Problem M3 — Every TCP segment treated as word-final (firmware)
 
 ### Engineering field

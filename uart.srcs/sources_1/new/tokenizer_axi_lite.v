@@ -77,6 +77,10 @@ module tokenizer_axi_lite #(
     reg [7:0] in_fifo_out_data; // holds 1 byte for the pre-tokenizer to consume 
     reg in_fifo_out_valid; // a flag which represents if the byte we are holding for the pre-tokenizer is valid
     wire in_fifo_ready; // a signal from top_tokenizer indicating the byte was consumed.
+    // word-boundary gate from the pre-tokenizer (driven by the top_tokenizer instance further
+    // below). Declared here, ahead of the input-FIFO block that reads it, so it is not referenced
+    // before its declaration.
+    wire tok_word_busy; // 1 while the pre-tokenizer is handing a word boundary to the trie engine
 
     reg in_fifo_wr_en; // a single cycle pulse that triggers a FIFO write
 
@@ -124,13 +128,18 @@ module tokenizer_axi_lite #(
 
     wire [TOKEN_W-1:0] out_fifo_dout = out_fifo_mem[out_fifo_rd_ptr[OUT_FIFO_DEPTH_LOG2-1:0]]; // combinational read - the current front-of-FIFO value is always available on out_fifo_dout. This is NOT registered - it's a direct array lookup
     
-    // 3 wires from the tokenizer pipeline
+    // wires from the tokenizer pipeline (tok_word_busy is declared earlier, near the input FIFO
+    // block that reads it, to avoid a used-before-declaration warning)
     wire tok_out_valid; // this indicated if emitted signal is a valid token (1) or not (0)
     wire [TOKEN_W-1:0] tok_out_data; // this carries the emitted token from the tokenizer pipeline
-    wire tok_word_busy; // word boundary gate signal from the pre-tokenizer, indicating that the pre-tokenizer is waiting for the trie engine to acknowledge the boundary
     wire tok_pipeline_busy; // high while the pre-tokenizer or trie engine still has work in flight (from top_tokenizer)
 
     reg out_fifo_rd_en; // single cycle pulse that triggers a FIFO read
+    // L3: marks that the current read-address assertion has already been serviced. A well-behaved
+    // master deasserts arvalid after the handshake, but if a master holds arvalid high across (or
+    // after) the read response, this flag stops a second accept from popping the output FIFO again
+    // for one intended read. Cleared once arvalid drops, so the next transaction is serviced.
+    reg read_addr_serviced;
 
     // M2: output-FIFO overflow detection (de-silence dropped tokens)
     reg out_fifo_overflow; // sticky: set when a token is dropped because the output FIFO was full
@@ -261,13 +270,18 @@ module tokenizer_axi_lite #(
             s_axi_rdata <= 0; // cleared
             s_axi_rresp <= 2'b00; // cleared
             out_fifo_rd_en <= 1'b0; // cleared
+            read_addr_serviced <= 1'b0; // cleared (L3)
         end else begin
             out_fifo_rd_en <= 1'b0; // on default every cycle, out_fifo_rd_en is 0. it only goes high when RX_DATA (0x04) is read.
 
-            if (s_axi_arvalid && !s_axi_rvalid) begin // when the master requests a read and we are not already holding a response
+            // L3: once the master drops arvalid, release the gate so the next read can be serviced.
+            if (!s_axi_arvalid) read_addr_serviced <= 1'b0;
+
+            if (s_axi_arvalid && !s_axi_rvalid && !read_addr_serviced) begin // master requests a read, we are not already holding a response, and this arvalid assertion has not been serviced yet (L3)
                 s_axi_arready <= 1'b1; // s_axi_arready goes HIGH
                 s_axi_rvalid  <= 1'b1; // s_axi_rvalid goes HIGH
                 s_axi_rresp   <= 2'b00; // OKAY
+                read_addr_serviced <= 1'b1; // L3: this read-address assertion is now serviced; block a second pop until arvalid drops
 
                 case (s_axi_araddr[3:2]) // a switch case statement on the return address
                     2'b00: begin // corresponds to 0x00, meaning a write-only register
