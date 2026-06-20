@@ -567,7 +567,117 @@ full suite is green: `tb_top_tokenizer`, `tb_tokenizer_axi_lite`, `tb_perf_measu
 `tb_h1_bug_investigation`, `tb_m2_overflow`, `tb_trie_engine`, `tb_pre_tokenizer`.
 P1 (pure flow-control + trie input skid) and the M4 RTL (`pipeline_busy` STATUS bit 3) are
 confirmed. Remaining for M4: the firmware half (`tok_pipeline_busy()` + drain-while-sending in
-`echo.c`) and the on-board TCP check. Bitstream/timing closure (WNS/TNS) in progress.
+`echo.c`) and the on-board TCP check. Bitstream/timing closure (WNS/TNS) clean.
+
+### Residual P1 boundary case found on-board: short word + next word drops a character
+On-board, `embed ding` returned a spurious `[UNK]` and `embed hardware` dropped the next word's
+first character (`embed hardware` → `7861 8270 12098 2094 8059`, i.e. `embed` + "ardware" with
+the `h` lost). It only reproduced under the firmware's slow, drain-while-sending byte cadence:
+`tb_tokenizer_axi_lite` (fast, FIFO-buffered) tokenized `embed` correctly, but `tb_axi_pipeline`
+(firmware timing) reproduced the drop. A cycle-stamped char-handoff probe showed the next word's
+first character (`h`) arriving at the `S_EMIT` cycle with `best_end != buf_end` — the
+**replay-launch** branch — which emits a piece and starts a backtrack but does not latch input.
+The skid's `S_EMIT` capture (fix A) only covered the `best_end == buf_end` *finalize* branch;
+`embed` (= `em` + `##bed`, a short two-piece word) launches its replay on the exact cycle the
+next character arrives, so it slipped through. `embedding` never hit it because its next-word
+character happened to land on the finalize cycle instead.
+
+**Fix:** capture the incoming character in the replay-launch branch too, guarded by
+`word_done_pending` (so a word's own mid-stream characters are never grabbed — only a next-word
+character, which can only appear once a boundary is pending) and `!pending_char_valid` (no
+overwrite). It is replayed when the word finalizes, via the existing `pending_char` handler.
+Surgical one-branch change in `trie_engine.v`'s `S_EMIT`.
+
+*Status:* fix applied; **awaiting `tb_axi_pipeline` re-run** (Test 6 `embed hardware` must return
+`7861 8270 8051`; Test 5 `embed` and all prior vectors must stay green). Then re-verify on-board.
+
+---
+
+## Investigation — board-only spurious `[UNK]` (token 100) on "embed"-class words
+
+### Symptom
+After the replay-launch capture fix above passed behavioral sim (incl. the slow-cadence
+`embed`/`embed hardware` tests), the **board** still returned `embed ` → `7861 8270 100` and
+`embed hardware` → `7861 8270 100 8051` — i.e. the word tokenizes correctly (`em` + `##bed`) but
+a spurious `[UNK]` is appended at the boundary. Behavioral sim is clean at every cadence.
+
+### Diagnosis — stale bitstream, not a live logic bug
+Two independent lines of evidence:
+
+1. **RTL trace (analytical).** Walked `embed ` through `trie_engine.v` cycle-by-cycle for all byte
+   cadences. The engine records the `em` match during streaming, emits `7861`, launches the replay
+   of `bed`, emits `8270`, then finalizes: `word_done_pending` cleared, `buf_end`/`scan_ptr`/
+   `m_start` reset, `has_best_match=0`, `word_active=0`. There is **no third entry to `S_EMIT`**
+   and nothing left in `pending_char` to replay (the replay-launch capture only fires under
+   `word_done_pending && in_char_valid`, impossible for `embed` alone). A spurious third `100` is
+   therefore **unreachable in the current source** — so the board must be running different logic.
+
+2. **Build-artifact forensics.** On disk: `trie_engine.v` edited **14:20**; the `design_1_wrapper.xsa`
+   exported to the board is **15:50**; the latest top synthesis (`synth_1/design_1_wrapper.dcp`) is
+   **16:12** — *after* the `.xsa` export — and `impl_1` had only reached `place_design.begin` with
+   **no routed checkpoint and no `.bit`**. So the board's 15:50 bitstream predates the 16:12
+   re-synthesis of the fix. The board was never running the fixed RTL.
+
+   The tokenizer is synthesized in **Global mode** (the IP synth wrapper instantiates
+   `tokenizer_axi_lite` directly; there is **no separate OOC `.dcp` or IP synth run** to cache a
+   stale netlist), so the 16:12 top synthesis already includes the current `trie_engine.v`. No
+   "Reset Output Products"/OOC step is needed — completing impl → bitstream → `.xsa` export suffices.
+
+### Resolution path (engineer running impl now)
+Let implementation finish → **Generate Bitstream** → **Export Hardware (include bitstream)**,
+overwriting `design_1_wrapper.xsa` (confirm its timestamp is newer than the 16:12 synthesis) →
+in Vitis re-read the `.xsa`, **re-apply the two BSP PHY patches** (a `.xsa` re-read wipes them),
+rebuild, program → re-test `embed ` (expect `7861 8270`) and `embed hardware` (expect
+`7861 8270 8051`).
+
+*Status:* **RESOLVED — root cause was a stale bitstream, not RTL.** Behavioral sim of the current
+`trie_engine.v` is clean (`tb_axi_pipeline`: `embed` and `embed (slow)` both emit exactly
+`7861 8270`, `best_end==buf_end` finalize, no third token), and the synthesis log shows no
+functional `trie_engine` warning (only a cosmetic `char_buf` RAM-inference fallback, [Synth 8-7186],
+which as flip-flops is functionally identical to the sim model). That proved the synthesized
+netlist matches the clean sim, so a board still emitting `7861 8270 100` had to be running an older
+image. It was: the Vitis run configuration was programming a cached, month-old bitstream from
+`lwip_echo_server/_ide/bitstream/design_1_wrapper.bit` while loading a freshly-built ELF — new
+firmware (M3/M4 live) on old tokenizer hardware. Repointing the launch config's bitstream to the
+current Vivado output (`uart.runs/impl_1/design_1_wrapper.bit`) and reprogramming cleared it:
+`embed` → `7861 8270`, `embed hardware` → `7861 8270 8051`. The residual-P1 `S_EMIT` replay-launch
+capture fix is hereby **verified on-board**. (Cosmetic follow-up still open: fix the `char_buf`
+constant-vs-variable-index write so it infers as distributed RAM and the warning goes away.)
+
+---
+
+## On-board verification — full regression pass (silicon, over TCP port 7)
+
+With the correct bitstream finally on the FPGA, a full suite was run on the board and every fix
+confirmed on silicon:
+
+- **embed fix / residual P1:** `embed` → `7861 8270`; `embed hardware` → `7861 8270 8051` (no
+  spurious `[UNK]`, no dropped boundary character).
+- **H1** (no spurious/dropped tokens on multi-piece replay): `embedding` → `7861 8270 4667`;
+  `unquestionably` → `4895 15500 3258 8231`; `tokenization` → `19204 3989`;
+  `internationalization` → `2248 3989`. No `100` on any plain-text word.
+- **P1** (no boundary character loss): `hello hardware` → `7592 8051`;
+  `embedding unquestionably` → 7 correct tokens; the 9-word pangram → all 9 correct.
+- **M1** (over-long word protection): `pneumonoultramicroscopicsilicovolcanoconiosis` (45 chars) →
+  11 fitting pieces followed by a single `100` sentinel, no hang; the 28-char control
+  `antidisestablishmentarianism` → 8 tokens with no `100`; a following `hello` → `7592` (clean
+  reset).
+- **M3** (TCP segment framing): split sends `embed`+`ding` → `7861 8270 4667` and
+  `inter`+`nationalization` → `2248 3989`, each the combined word, server did not hang on the
+  mid-word segment.
+- **M4** (deterministic drain): per-request latency scales with token count (no-token segments
+  ~25 µs, up to ~1537 µs for 11 tokens) instead of the old fixed ~500 µs blind-delay floor.
+
+**H2** (node-0 binary-search underflow) is defensive and exercised implicitly by every dead-end
+search above; **M2** (output-FIFO overflow detection) remains verified in `tb_m2_overflow` — on the
+board M4's drain-while-sending prevents the FIFO from ever backing up, so it is not separately
+triggerable. All review items H1–M4 plus P1 and the embed fix are now verified.
+
+**Process note (cost a long false-alarm debug):** the board appeared to still emit `7861 8270 100`
+*after* the RTL was correct because the Vitis run configuration was programming a stale, month-old
+cached bitstream (`lwip_echo_server/_ide/bitstream/design_1_wrapper.bit`) while loading a fresh ELF.
+Repointing the launch config to `uart.runs/impl_1/design_1_wrapper.bit` fixed it. When board
+behavior contradicts a clean xsim run, suspect the programmed bitstream before the RTL.
 
 ---
 
@@ -615,7 +725,45 @@ correct streaming behavior, but worth noting.
   4667`, not the `embed`+`ding` split). On the unfixed firmware this returns the
   wrong split.
 
-*Status:* fix in place; awaiting an on-board TCP check.
+*Status:* applied in `echo.c` (raw-byte forwarding, no strip, no appended boundary);
+awaiting an on-board TCP check. See the M3+M4 firmware note below for the drain interaction.
+
+---
+
+## M3 + M4 firmware (`echo.c`) — implementation note (drain interaction)
+
+The two firmware fixes were applied together in `recv_callback`:
+
+- **M3:** forward every received byte unchanged — nothing stripped, no synthetic trailing
+  space. Real whitespace/`\r\n` provides the word boundaries; a word split across TCP segments
+  stays in the pipeline until its real boundary arrives.
+- **M4:** added `tok_pipeline_busy()` (STATUS bit 3); **drain-while-sending** (after each byte,
+  read any already-available tokens — a token is always read when available so the pipeline can
+  never stall, and the response buffer only stops *appending* when nearly full); and a
+  **deterministic final drain** replacing the ~500 µs blind delay.
+
+**Co-design subtlety found while implementing (decides the final-drain logic).** Because the RTL
+`pipeline_busy` includes `word_active` (needed for the trie's mid-replay token hold — see the P1
+debug saga), a word held mid-stream keeps `pipeline_busy` **high**. With M3 no longer appending a
+boundary, a TCP segment can legitimately end mid-word, so a naive
+`while (pipeline_busy() || has_token())` final drain would **block lwIP forever** on exactly the
+fragmented input M3 targets. Resolved deterministically (no blind delay, no hang) by keying the
+final drain on whether *the segment's own last byte was a word boundary*:
+- **ended on a boundary** (the normal telnet `\r\n` case): every word flushes, so wait until
+  `pipeline_busy` clears and read every token;
+- **ended mid-word** (alphanumeric last byte): a partial word is intentionally held for the next
+  segment, so do **not** wait on `pipeline_busy` — take the tokens already produced and return;
+  the held word's tokens drain at the start of the next segment's send loop.
+
+### Verification plan (on the board, over TCP)
+- **M4 latency / functional:** a normal line (`the quick brown fox jumps over the lazy dog\n`)
+  returns the known IDs (`1996 4248 2829 4419 14523 2058 1996 13971 3899`) and the UART `Total`
+  latency is far below the old ~500 µs floor (now scales with input, ~tens of µs).
+- **M3 split word:** `s.sendall(b"embed"); time.sleep(0.2); s.sendall(b"ding\n")` → the combined
+  reply must equal `embedding` = `7861 8270 4667` (not an `embed`+`ding` split), and the server
+  must **not hang** on the first (mid-word) segment.
+
+*Status:* applied in `echo.c`; awaiting the on-board TCP checks above.
 
 ---
 

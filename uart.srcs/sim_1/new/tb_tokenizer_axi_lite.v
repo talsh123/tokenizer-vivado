@@ -421,6 +421,19 @@ module tb_tokenizer_axi_lite;
                            16'd0, 16'd0, 16'd0, 16'd0);
 
         // ----------------------------------------------------------
+        // Test 6: "embed " -> [7861, 8270]  (em + ##bed, NO [UNK])
+        // reproduces the on-board anomaly where "embed" emitted a spurious
+        // [UNK] (100). "embed" is "embedding" minus "ding": its continuation
+        // replay ends exactly at the buffer end on a terminal node that still
+        // has children -- a finalization path the other vectors don't hit.
+        // ----------------------------------------------------------
+        test_num = 6;
+        $display("\n===== TEST %0d: \"embed \" =====", test_num);
+        send_string({8'h65, 8'h6D, 8'h62, 8'h65, 8'h64, 8'h20, {26{8'h00}}}, 6);
+        collect_tokens;
+        verify_tokens(2, 16'd7861, 16'd8270, 16'd0, 16'd0);
+
+        // ----------------------------------------------------------
         // Summary
         // ----------------------------------------------------------
         $display("\n============================================");

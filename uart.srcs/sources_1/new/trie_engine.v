@@ -507,6 +507,16 @@ module trie_engine #(
                             scan_ptr <= best_end; // scan_ptr pointer points to where the best longest matching token ended
                             replaying <= 1'b1; // we set the replaying flag to 1, indicating we are in backtracking mode
                             ready <= 1'b0; // we are busy replaying so we set ready flag to 0, indicating we are not ready to receive more characters
+                            // capture the next word's first character if it races in on this emit cycle.
+                            // a word boundary is pending, so any incoming character belongs to the NEXT word.
+                            // this branch launches a replay and does not latch input, so without this the
+                            // character would be lost (the bug seen with short words like "embed" whose replay
+                            // launches on the exact cycle the next word's first character arrives). it is
+                            // replayed when this word finalizes (the pending_char handler below).
+                            if (in_char_valid && word_done_pending && !pending_char_valid) begin
+                                pending_char <= in_char;
+                                pending_char_valid <= 1'b1;
+                            end
                             state <= S_IDLE; // we jump to S_IDLE
                         end else begin // the best longest-matching token consumed all of the characters in the character buffer
                             m_start <= buf_end; // m_start pointer points to the end of the character buffer

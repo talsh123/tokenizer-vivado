@@ -184,6 +184,38 @@ module tb_axi_pipeline;
         end
     endtask
 
+    // same as send_sentence, but with a large idle gap between bytes to mimic the board's very
+    // slow MMIO byte cadence (~3000 cycles/byte), where the trie goes fully idle between every
+    // character. exposes finalization edges the fast (FIFO-buffered) path never hits.
+    task send_sentence_slow;
+        input [8*64-1:0] str;
+        input integer    len;
+        integer k;
+        reg [7:0] ch;
+        reg [31:0] st;
+        reg [31:0] rd;
+        begin
+            ntok = 0;
+            for (k = 0; k < len; k = k + 1) begin
+                ch = str[8*(len-1-k) +: 8];
+                tok_send_byte(ch);
+                repeat (1000) @(posedge clk);   // big inter-byte idle gap (board is slower still)
+                drain_available;
+            end
+            // deterministic final drain
+            axi_read(ADDR_STATUS, st);
+            while ((st & 32'h8) || (st & 32'h2)) begin
+                if (st & 32'h8) saw_busy = 1;
+                if (st & 32'h2) begin
+                    axi_read(ADDR_RX_DATA, rd);
+                    captured[ntok] = rd[15:0];
+                    ntok = ntok + 1;
+                end
+                axi_read(ADDR_STATUS, st);
+            end
+        end
+    endtask
+
     // compare collected tokens to expected[], and confirm the pipeline is idle
     task check_tokens;
         input [8*40-1:0] name;
@@ -195,6 +227,7 @@ module tb_axi_pipeline;
             pass = 1'b1;
             if (ntok !== n) begin
                 $display("  [%s] FAIL: expected %0d tokens, got %0d", name, n, ntok);
+                $write("       got ->"); for (j=0;j<ntok;j=j+1) $write(" %0d", captured[j]); $display("");
                 pass = 1'b0;
             end else begin
                 for (j = 0; j < n; j = j + 1)
@@ -262,6 +295,32 @@ module tb_axi_pipeline;
         expected[6]=16'd1996;  expected[7]=16'd13971; expected[8]=16'd3899;
         check_tokens("pangram", 9);
 
+        // Test 5 - "embed " on its own. Reproduces the on-board spurious [UNK] (100):
+        // "embed" = em + ##bed; its continuation replay ends exactly at the buffer end on a
+        // terminal-with-children node. tb_tokenizer_axi_lite (fast, FIFO-buffered) tokenizes it
+        // correctly, but the firmware's drain-while-sending feeds bytes slowly with idle gaps,
+        // which is what this testbench mimics.
+        send_sentence("embed ", 6);
+        expected[0]=16'd7861; expected[1]=16'd8270;
+        check_tokens("embed", 2);
+
+        // Test 6 - "embed hardware ": embed followed by another word (the on-board "embed ding"
+        // shape, with a known second word). A spurious [UNK] would appear between 8270 and 8051.
+        send_sentence("embed hardware ", 15);
+        expected[0]=16'd7861; expected[1]=16'd8270; expected[2]=16'd8051;
+        check_tokens("embed hardware", 3);
+
+        // Test 7 - "embed " under the board's SLOW byte cadence (trie idle between every char).
+        // On the board this returns the spurious 7861 8270 100; the fast tests above do not.
+        send_sentence_slow("embed ", 6);
+        expected[0]=16'd7861; expected[1]=16'd8270;
+        check_tokens("embed (slow)", 2);
+
+        // Test 8 - "embed hardware " slow (board "embed ding"/"embed hardware" shape).
+        send_sentence_slow("embed hardware ", 15);
+        expected[0]=16'd7861; expected[1]=16'd8270; expected[2]=16'd8051;
+        check_tokens("embed hardware (slow)", 3);
+
         // M4 sanity: STATUS bit 3 must have actually asserted during the run
         // (otherwise the drain would be relying on bit 1 alone / the bit is stuck low).
         if (!saw_busy) begin
@@ -278,6 +337,45 @@ module tb_axi_pipeline;
         repeat (20) @(posedge clk);
         $finish;
     end
+
+    // ===== TEMP DEBUG PROBE (char handoff at the embed->hardware boundary) =====
+    always @(posedge clk) begin
+        if (uut.u_tokenizer.pt_out_char_valid)
+            $display("[%0t] CHAR idx=%0d -> trie | ready=%b state=%0d rep=%b wdp=%b pcv=%b best_end=%0d buf_end=%0d wact=%b",
+                $time, uut.u_tokenizer.pt_out_char,
+                uut.u_tokenizer.u_trie_engine.ready,
+                uut.u_tokenizer.u_trie_engine.state,
+                uut.u_tokenizer.u_trie_engine.replaying,
+                uut.u_tokenizer.u_trie_engine.word_done_pending,
+                uut.u_tokenizer.u_trie_engine.pending_char_valid,
+                uut.u_tokenizer.u_trie_engine.best_end,
+                uut.u_tokenizer.u_trie_engine.buf_end,
+                uut.u_tokenizer.u_trie_engine.word_active);
+        if (uut.u_tokenizer.pt_out_word_done)
+            $display("[%0t] WORD_DONE -> trie | ready=%b state=%0d rep=%b best_end=%0d buf_end=%0d",
+                $time, uut.u_tokenizer.u_trie_engine.ready,
+                uut.u_tokenizer.u_trie_engine.state,
+                uut.u_tokenizer.u_trie_engine.replaying,
+                uut.u_tokenizer.u_trie_engine.best_end,
+                uut.u_tokenizer.u_trie_engine.buf_end);
+        // every S_EMIT cycle: shows whether it will emit a real token or a forced [UNK]
+        // (has_best=0), plus the pointers that drive the finalize-vs-replay decision.
+        if (uut.u_tokenizer.u_trie_engine.state == 4'd9)
+            $display("[%0t] S_EMIT | has_best=%b best_tid=%0d best_end=%0d buf_end=%0d m_start=%0d scan_ptr=%0d wdp=%b rep=%b pcv=%b",
+                $time,
+                uut.u_tokenizer.u_trie_engine.has_best_match,
+                uut.u_tokenizer.u_trie_engine.best_match_tid,
+                uut.u_tokenizer.u_trie_engine.best_end,
+                uut.u_tokenizer.u_trie_engine.buf_end,
+                uut.u_tokenizer.u_trie_engine.m_start,
+                uut.u_tokenizer.u_trie_engine.scan_ptr,
+                uut.u_tokenizer.u_trie_engine.word_done_pending,
+                uut.u_tokenizer.u_trie_engine.replaying,
+                uut.u_tokenizer.u_trie_engine.pending_char_valid);
+        if (uut.u_tokenizer.u_trie_engine.out_token_valid)
+            $display("[%0t] EMIT %0d", $time, uut.u_tokenizer.u_trie_engine.out_token_id);
+    end
+    // ===== END TEMP DEBUG PROBE =====
 
     // ------------------------------------------------------------------ watchdog
     initial begin

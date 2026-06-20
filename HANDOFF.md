@@ -5,6 +5,47 @@ Paste this into the new chat, or just tell the new chat: "read HANDOFF.md and co
 
 ---
 
+## ⭐ CURRENT STATUS (latest — read this first; the RTFC below is the original, now stale)
+
+**Project moved** to `C:\Users\talsh\.Xilinx\projects\uart` (was under a non-synced
+`...\OneDrive\...` folder; no actual OneDrive). All edits go here now.
+
+**DONE & verified in Vivado behavioral sim (xsim):** H1, H2, M1, M2, **P1** (pre-tok pure
+valid/ready + trie input skid), **M4** (`pipeline_busy` STATUS bit 3 incl. `tok_out_valid`
+emit-cycle term), and the **embed boundary char-drop fix** (S_EMIT replay-launch capture).
+Full `tb_axi_pipeline` is green incl. slow-cadence tests (`embed (slow)`, `embed hardware
+(slow)`). Timing closes clean.
+
+**Firmware `echo.c` (Vitis project `C:\Users\talsh\Vitis\final_project_eth_nexys_video`):**
+M3 (raw-byte forwarding, no synthetic boundary) + M4 (`tok_pipeline_busy()`, drain-while-
+sending, boundary-aware final drain) + multi-line-output fix (append `\r\n` only when the
+segment ended on a boundary). On-board: ethernet up, normal words correct, M4 latency floor gone.
+
+**BSP PHY patches — RE-APPLY AFTER EVERY BSP REGEN (they get wiped):** `xadapter.c`
+(`axieth_link_status` first_link/hardcode-100) and `xaxiemacif_physpeed.c` (`get_IEEE_phy_speed`
+Realtek `0x001c` branch). Full verbatim code is in `.claude-memory/vitis-bsp-phy-patches.md`
+(and Claude memory). A BSP regen on 2026-06-20 wiped them again — confirm before each board build.
+
+**OPEN ISSUE — board-only spurious `[UNK]` (token 100) on "embed"-class words:** the board
+returns `embed ` → `7861 8270 100` (and `embed hardware` → `7861 8270 100 8051`), but
+**behavioral sim is clean at every byte cadence** (no `has_best=0` cycle). Synthesis log confirms
+all 9 `.mem` BRAM inits loaded OK, bitstream timestamps are post-fix, and `.mem` copies match —
+so it's NOT data loss/stale-source by those checks. Working theory: stale synthesized RTL from
+Vivado caching, OR a synthesis/hardware behavioral difference. **NEXT STEP:** clean rebuild at the
+new path (Reset Synthesis+Implementation to force full re-read → re-synth → re-impl → bitstream),
+re-apply BSP patches, reprogram, re-test `embed`. If it persists: post-implementation timing sim
+(the tokenizer is the OOC IP `design_1_tokenizer_axi_lite_0_0`, so it has a netlist) or an ILA on
+`out_token_valid`/`out_token_id` triggered on token==100.
+
+**Vivado gotchas hit this session (not a sync issue — no OneDrive):** the editor buffer can
+overwrite disk on sim launch; xsim reuses stale compiled snapshots. Always **Reset** the sim/run
+to force a real recompile; close a file in the editor before editing it externally.
+
+**`tb_axi_pipeline.v` has a temp debug probe + slow tests (Test 7/8)** — fine to keep for now;
+remove the `===== TEMP DEBUG PROBE =====` block for the final clean version.
+
+---
+
 ## ROLE
 You are an experienced FPGA / digital-design and embedded-firmware engineer taking
 over an in-progress hardening + optimization effort on a hardware **BERT WordPiece
