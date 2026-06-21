@@ -171,8 +171,19 @@ module trie_engine #(
 
     
     reg word_active; // 1 - signals we are currently processing a word, otherwise 0
-    reg word_done_pending; // this "saves" the state of the in_word_done signal from the pre-tokenizer.
-    // because the in_word_done pulses for only 1 clock cycle and resets, we "save" and hold it until the FSM can handle it.
+    // word-boundary counter (was a single-bit word_done_pending). The pre-tokenizer's
+    // in_word_done is a 1-cycle pulse; we accumulate boundaries here until the FSM can
+    // finalize each word. It MUST be a counter, not a single bit: when a 1-character word's
+    // boundary arrives while the previous (multi-piece) word is still replaying, two
+    // boundaries are pending at once. A single bit merged them (1|1 = 1), so the 1-char word
+    // never got its own boundary and glued onto the next word ("a long"->"along",
+    // "vocab t vocab"-> the second "t" merged into "tvocab"). The 1-deep input skid bounds the
+    // number of concurrently in-flight words to 2, so a 2-bit saturating counter is sufficient.
+    reg [1:0] word_done_count;
+    // blocking, per-cycle: set to 1 by the single branch that finalizes a word this cycle.
+    // The one counter update at the end of the FSM applies +in_word_done -bnd_consume, so a
+    // boundary arriving on the same cycle one is consumed is preserved (net zero, not lost).
+    reg bnd_consume;
     reg replaying; // 1 if the engine is replaying buffered characters after a backtrack.
     // during replay, the engine reads from char_buf instead from the pre-tokenizer input and ready stays at 0 to prevent from new characters to come in.
 
@@ -190,7 +201,7 @@ module trie_engine #(
     // (state != S_IDLE)      - walking the trie / emitting.
     // !ready                 - ready is held low while emitting or replaying.
     // replaying              - backtracking through buffered characters.
-    // word_done_pending      - a word boundary was latched but not yet finalized; this
+    // word_done_count != 0   - a word boundary was latched but not yet finalized; this
     //                          term closes the one-cycle window at a boundary where the
     //                          input pulse has ended but the engine has not yet lowered ready.
     // pending_char_valid     - a character is buffered in the input skid and will still produce a token.
@@ -200,7 +211,7 @@ module trie_engine #(
     //                          the FSM sits in S_IDLE with ready high; without this term a poller sees a
     //                          false "idle" and stops one token early. Cleared only at word finalize.
     //                          (Assumes input is boundary-terminated, which the firmware guarantees.)
-    assign busy = (state != S_IDLE) || !ready || replaying || word_done_pending || pending_char_valid || word_active;
+    assign busy = (state != S_IDLE) || !ready || replaying || (word_done_count != 2'd0) || pending_char_valid || word_active;
 
     // main FSM - the sequential logic
     always @(posedge clk) begin // this block executes on every rising clock edge
@@ -218,7 +229,7 @@ module trie_engine #(
             scan_ptr <= 5'd0; // cleared
             buf_end <= 5'd0; // cleared
             word_active <= 1'b0; // cleared
-            word_done_pending <= 1'b0; // cleared
+            word_done_count <= 2'd0; // cleared
             replaying <= 1'b0; // cleared
             target_char <= {CHAR_W{1'b0}}; // cleared
             bs_lo <= {EDGE_ADDR_W{1'b0}}; // cleared
@@ -237,24 +248,19 @@ module trie_engine #(
             // even if we set out_token_valid here to 0 using <= and later we set it to 1 using <=, only the last assignment wins.
             out_token_valid <= 1'b0; // for every cycle, we clear the token output pulse
 
-            // this block runs every clock cycle, regardless of the fsm state
-            // whenever in_word_done is HIGH, word_done_pending "saves" the state of the in_word_done signal from the pre-tokenizer.
-            // because the in_word_done pulses for only 1 clock cycle and resets, we "save" and hold it until the FSM can handle it.
-            // if we catch a high pulse of in_word_done when we are busy,
-            // (maybe while we're mid-binary-search or backtracking)
-            // we can't stop and handle it immediately.
-            // so we latch onto word_done_pending as a "sticky" flag.
-            // The FSM will check this flag when it's ready (in S_IDLE or S_EMIT).
-            // also, we immediately block new characters
-            if (in_word_done) begin
-                word_done_pending <= 1'b1;
-            end
+            // default: no word is being finalized this cycle. A branch that finalizes a word
+            // (the single owner of a boundary) sets bnd_consume below. The one counter update at
+            // the end of this block then applies +1 for an incoming in_word_done pulse and -1 for
+            // bnd_consume. Accumulating in_word_done into a COUNT (not a sticky bit) is the fix for
+            // a 1-character word whose boundary arrives during the previous multi-piece word's
+            // replay: both boundaries are now preserved instead of being merged and lost.
+            bnd_consume = 1'b0;
 
             // the fsm different states
             case (state)
                 S_IDLE: begin // S_IDLE state
                     // if a word boundary is pending and we are not replaying (backtracking)
-                    if (word_done_pending && !replaying) begin
+                    if ((word_done_count != 2'd0) && !replaying) begin
                         // M1 FIX: if the word overflowed char_buf, abandon partial state and emit a
                         // single [UNK] sentinel for the over-long word, then reset for the next word.
                         // (Pieces already streamed out for the part that fit remain -- the streaming
@@ -264,7 +270,7 @@ module trie_engine #(
                             out_token_id      <= UNK_TOKEN_ID; // emit [UNK] (token 100)
                             out_token_valid   <= 1'b1;
                             word_too_long     <= 1'b0;
-                            word_done_pending <= 1'b0;
+                            bnd_consume        = 1'b1; // consume one pending boundary (over-long word flushed)
                             use_root          <= 1'b1; // next word starts in the root trie
                             word_active       <= 1'b0;
                             has_best_match    <= 1'b0;
@@ -283,7 +289,7 @@ module trie_engine #(
                                 pending_char_valid <= 1'b1; // we set the character as valid 
                             end
                             // go to S_EMIT to output the token
-                            // we deliberately do NOT clear word_done_pending here - S_EMIT needs to see it to know it should reset use_root for the next word.
+                            // we deliberately do NOT consume the boundary here - S_EMIT needs to see the count to know it should reset use_root for the next word.
                             // hold ready low while we emit: with the pre-tokenizer's word-boundary
                             // handshake removed, this is what stops the next word's first character
                             // from being handed into S_EMIT (which does not latch input) and lost.
@@ -298,7 +304,7 @@ module trie_engine #(
                             end
                             // in this path the word ended and no valid token was found
                             // no token is emitted here - effectively the word is silently dropped
-                            word_done_pending <= 1'b0; // clear the pending flag
+                            bnd_consume = 1'b1; // consume one pending boundary (word dropped, no token)
                             // reset everything to the next word
                             use_root     <= 1'b1; // cleared
                             word_active  <= 1'b0; // cleared
@@ -316,13 +322,13 @@ module trie_engine #(
                         if (scan_ptr == buf_end) begin
                             replaying <= 1'b0; // we set the replaying flag to 0, indicating we finished replaying
                             // if we finished the entire word
-                            if (word_done_pending) begin
-                                // H1 FIX: word_done_pending is intentionally NOT cleared here. S_EMIT is the
-                                // single owner of this flag and finalizes the word. Clearing it early made
+                            if (word_done_count != 2'd0) begin
+                                // H1 FIX: the boundary is intentionally NOT consumed here. S_EMIT is the
+                                // single owner of the boundary and finalizes the word. Consuming it early made
                                 // S_EMIT's (best_end==buf_end) branch skip finalization -- holding the FSM
                                 // in S_EMIT and emitting a spurious [UNK] (token 100); and on the
                                 // (best_end!=buf_end) path it dropped the final continuation piece.
-                                // Leave it set -- S_EMIT clears it (~line 415). 
+                                // Leave the count -- S_EMIT consumes one boundary at finalize.
                                 use_root <= 1'b1; // we initialize the use_root to use the root trie for the next word
                                 // If we found a match during replay, we emit what we have (best match or [UNK])
                                 if (has_best_match) begin
@@ -513,7 +519,7 @@ module trie_engine #(
                             // character would be lost (the bug seen with short words like "embed" whose replay
                             // launches on the exact cycle the next word's first character arrives). it is
                             // replayed when this word finalizes (the pending_char handler below).
-                            if (in_char_valid && word_done_pending && !pending_char_valid) begin
+                            if (in_char_valid && (word_done_count != 2'd0) && !pending_char_valid) begin
                                 pending_char <= in_char;
                                 pending_char_valid <= 1'b1;
                             end
@@ -523,8 +529,8 @@ module trie_engine #(
                             scan_ptr <= buf_end; // scan_ptr pointer points to the end of the character buffer
                             replaying <= 1'b0; // we are not replaying, so we set 0
                 
-                            if (word_done_pending) begin // if consumed everything and we hit a word boundary
-                                word_done_pending <= 1'b0; // cleared
+                            if (word_done_count != 2'd0) begin // if consumed everything and we hit a word boundary
+                                bnd_consume = 1'b1; // consume one pending boundary (word finalized)
                                 word_active <= 1'b0; // cleared
                                 use_root <= 1'b1; // set use_root to 1, indicating that for the next word we use the root trie
                                 m_start <= 5'd0; // cleared
@@ -557,7 +563,7 @@ module trie_engine #(
                                 end
                             end else begin
                                 // H1 FIX (defensive): every branch must assign a next state. With the
-                                // premature word_done_pending clear removed above, reaching here -- a
+                                // premature boundary consume removed above, reaching here -- a
                                 // match consumed the whole buffer with no word boundary pending -- is
                                 // not expected; return to a safe IDLE rather than holding S_EMIT.
                                 ready <= 1'b1;
@@ -588,6 +594,17 @@ module trie_engine #(
                 end
 
             endcase
+
+            // single word-boundary counter update. +1 when the pre-tokenizer pulses a boundary,
+            // -1 when a branch finalized a word this cycle (bnd_consume). When both happen on the
+            // same cycle the count is unchanged (net zero) so the new boundary is not lost. The
+            // counter saturates at 3 and is never decremented below 0 (every bnd_consume sits
+            // inside a (word_done_count != 0) guard), so it cannot underflow/overflow.
+            if (in_word_done && !bnd_consume) begin
+                if (word_done_count != 2'd3) word_done_count <= word_done_count + 2'd1; // saturate
+            end else if (!in_word_done && bnd_consume) begin
+                word_done_count <= word_done_count - 2'd1;
+            end
         end
     end
 endmodule

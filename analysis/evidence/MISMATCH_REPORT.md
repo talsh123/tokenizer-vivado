@@ -1,4 +1,12 @@
-# Correctness & mismatch report — 64/66 exact match (97%)
+# Correctness & mismatch report — 66/66 exact match (100%) after the #2 fix
+
+> **UPDATE (#2 fixed, sim-verified):** the 2 edge-case mismatches below were **root-caused and
+> fixed** in `trie_engine.v` (`word_done_pending` single bit → `word_done_count` saturating
+> counter). The fixed RTL scores **66/66 (100%)** in xsim (`tb_word_boundary` 8/8 PASS; full-corpus
+> `compare_results.py` → 100.0%, `inspect_mismatch.py` → 0 mismatches). This section is kept because
+> it documents the bug. **Note on hardware state:** the result is **sim-verified**; the on-silicon
+> 66/66 lands once the pending synthesis/implementation re-flash is done (the previously *shipped*
+> bitstream is 64/66). See JOURNAL "Bug #2 fixed" and the root-cause write-up there.
 
 **Purpose:** defend the correctness graph and pre-empt *"why only 97%?"* (Book Ch. 10.2)
 
@@ -63,14 +71,19 @@ instead of `t` + `vo` `##ca` `##b`. Same pattern: 1-char word + following word.
 
 ---
 
-## 3. Status / decision
+## 3. Status / decision — FIXED (sim-verified)
 
-- **Characterized, deferred.** The fix lives in the pre-tokenizer / boundary FSM
-  (cross-piece word reassembly) and would need a sim re-run + re-synthesis. The team chose
-  to **document, not fix**, for the report deadline.
-- **Impact is bounded:** only triggers when a one-letter token (`a`, `t`, `i`, …) directly
-  follows a multi-piece word with no punctuation between. 2 of 66 real-world lines (3%).
-- Tracked in `CODE_REVIEW.md` §8 "Known limitations" and `HANDOFF.md`.
+- **Root cause:** `trie_engine.v`'s `word_done_pending` was a **single bit**. When a 1-character
+  word's boundary arrives while the previous multi-piece word is still *replaying* (the racing-char
+  skid pulls the 1-char word's character in early, freeing the pre-tokenizer to pulse the next
+  boundary), the second boundary collided with the first (`1|1 = 1`) and was lost — so the 1-char
+  word never got its own boundary and glued onto the next word.
+- **Fix:** replaced the single bit with a **2-bit saturating counter** (`word_done_count`):
+  boundaries are accumulated (+1 on `in_word_done`, −1 on each word finalize), so colliding
+  boundaries are preserved. The 1-deep input skid bounds concurrent words to 2, so 2 bits suffice.
+- **Verification:** `tb_word_boundary` 8/8 PASS (incl. `summarize a long`, `vocab t vocab`,
+  `embed embedding a hi`); full corpus 66/66 (100%); `inspect_mismatch.py` 0 mismatches.
+- **Hardware state:** sim-verified; on-silicon 66/66 follows the pending re-implementation/re-flash.
 
 ## 4. Regenerate
 ```

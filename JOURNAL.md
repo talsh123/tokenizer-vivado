@@ -1335,3 +1335,39 @@ close it.
 (see HANDOFF "Stage 5 open items"): board TCP regression log, Route B (partner's other route), Mermaid
 PNG/SVG exports (book-side), board photo. The timing miss (−0.374 ns) and the 1-char-word bug remain
 the two documented honest limitations.
+
+---
+
+## Bug #2 FIXED — 1-char word after a multi-piece word (sim-verified 66/66) — 2026-06-21
+
+The documented correctness limitation (`a long`→`along`, `vocab t vocab`→`tvocab`) is fixed.
+
+**Root cause:** `trie_engine.v`'s `word_done_pending` was a single bit. The pre-tokenizer pulses
+`out_word_done` for one cycle, ungated by `trie_ready`. When a 1-character word's boundary arrives
+while the previous *multi-piece* word is still replaying — which happens because the racing-char
+skid (the P1/embed optimization) pulls the 1-char word's character into the trie early, freeing the
+pre-tokenizer to accept the following space and pulse the next boundary mid-replay — the second
+boundary lands while `word_done_pending` is already 1. `1|1 = 1`: the boundary is swallowed, the
+1-char word never finalizes, and it glues onto the next word. (Explains why it only hit 1-char words
+*after a multi-piece word*: a single-piece predecessor emits too fast for the boundaries to collide,
+which is why the *first* `t vocab` after single-piece `map` was already correct.)
+
+**Fix:** `word_done_pending` (1 bit) → `word_done_count` (2-bit saturating counter). Boundaries are
+accumulated: `+1` on `in_word_done`, `−1` when a word finalizes (`bnd_consume`), applied in one
+consolidated update so a boundary arriving on the same cycle one is consumed is preserved (net zero,
+not lost). All boundary reads became `word_done_count != 0`; all finalize sites set `bnd_consume`.
+The 1-deep input skid bounds concurrent in-flight words to 2, so 2 bits are sufficient; the counter
+saturates at 3 and every decrement sits inside a `!= 0` guard (no under/overflow). Faithful to the
+H1/M1/embed behavior — those branches' boundary handling is preserved exactly.
+
+**Verification (xsim, behavioral):**
+- New `tb_word_boundary.v`: 8/8 PASS — bug patterns `summarize a long` (`7680 7849 4697 1037 2146`),
+  `vocab t vocab` (`29536 3540 2497 1056 29536 3540 2497`), `embed embedding a hi`; plus regression
+  guards `map t vocab`, `a long`, `hello`, `embed`, `embedding`.
+- Full 66-line corpus re-run through `tb_corpus_perf` → `compare_results.py` reports **66/66 (100%)**
+  exact word-token match (was 64/66); `inspect_mismatch.py` → **0 mismatches**.
+
+**State:** RTL fix sim-verified; **not yet on silicon**. The shipped bitstream is still 64/66; the
+on-silicon 66/66 lands with the pending single synthesis/implementation batch (#2 + #7 + #9). Until
+then the evidence pack figures/CSVs that describe the *board* remain the 64/66 set unless explicitly
+regenerated and labelled "sim". This is the first item of the Phase-1 (no-implementation) batch.
