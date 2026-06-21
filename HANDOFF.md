@@ -65,6 +65,50 @@ Realtek `0x001c` branch). Confirm before every board build.
 
 ---
 
+## ⭐ STAGE 5 — Partner evidence pack (2026-06-21): WHERE EVERYTHING RAFI ASKED FOR IS SAVED
+
+**All P0 (book-blocking) deliverables are DONE, plus P1 #11 (waveform).** The single source of truth
+is **`analysis/evidence/EVIDENCE_INDEX.md`** — it maps every deliverable → status → file → book
+chapter, and has a capture-checklist for anything still outstanding. Quick access map:
+
+| Rafi's deliverable | Saved at | How to open / regenerate |
+|---|---|---|
+| Six graphs (data + scripts) | `analysis/figures/*.png`, data `analysis/results/*.csv`, scripts `analysis/*.py` | `py ./plot_results.py` (figures); §A of the index maps each figure→CSV→script |
+| Energy calculation sheet | `analysis/evidence/ENERGY_CALCULATION.md` | open in any markdown viewer; inputs in `results/power.csv` + `results/power_fpga.rpt` |
+| DMA latency sweep | sim: `analysis/results/fpga_results.csv` (66-pt); board: 54–72 µs (JOURNAL "R2 complete") | `py ./gen_corpus_tb.py` → run `tb_corpus_perf` in xsim |
+| CPU benchmark (script/log/settings) | `analysis/evidence/BENCHMARK_SETUP.md` + `analysis/cpu_tokenizer_benchmark.py` + `results/cpu_results.csv`, `results/cpu_throughput.csv` | `py ./cpu_tokenizer_benchmark.py` |
+| Corpus + 2/66 mismatch list | `analysis/corpus.txt` + `analysis/evidence/MISMATCH_REPORT.md` | `py ./inspect_mismatch.py` to re-decode |
+| `report_utilization` | `analysis/results/utilization_impl.rpt`, `utilization_hier.rpt` | `source analysis/gen_reports.tcl` (Vivado, project open) |
+| `report_timing_summary` + `.xdc` | `analysis/results/timing_summary.rpt`, `timing_worst_paths.rpt`, `Nexys-Video-Master.xdc` | same script; WNS **−0.374 ns** (does not fully close — see below) |
+| Block design screenshot | `analysis/figures/block_design.jpg` | open image |
+| Address Editor screenshot | `analysis/figures/address_editor.jpg` | open image |
+| `tb_axi_dma` PASS transcript | `analysis/evidence/tb_axi_dma_transcript.txt` | re-run: set `tb_axi_dma` top → `restart; run all` (NOT a bare `run all` — that hits a stale-snapshot 5 ms timeout) |
+| DMA waveform (m_axis_tlast/TOKEN_COUNT) | `analysis/figures/waveform.jpg` | open image |
+
+**One-shot Vivado report dump:** `source c:/Users/talsh/.Xilinx/projects/uart/analysis/gen_reports.tcl`
+(writes utilization + timing + copies the user `.xdc` into `analysis/results/`, prints headline WNS).
+
+### Stage 5 OPEN ITEMS (remaining — none block the P0 book chapters)
+- **P1 #12 — board TCP regression log:** optional; telnet the corpus, capture the UART `DMA total: …
+  µs | Tokens: …` lines → `analysis/evidence/board_tcp_regression.txt`. Turns the 3-point board
+  latency into a real sweep.
+- **P1 #13 — Route B (Quartus/Icarus) artifacts:** the partner's *other* implementation route, NOT in
+  this repo. Rafi/partner owns this.
+- **P1 #14 — Mermaid → PNG/SVG:** the architecture diagrams live in the **book draft**, not this repo;
+  export each via mermaid.live (PNG **and** SVG) for Word/PDF. Book-side task.
+- **P2 #15 — board photo + demo screenshot:** optional, for the defense.
+- **Waveform input EOP (cosmetic):** `figures/waveform.jpg` shows the output `m_axis_tlast`; an
+  optional left-scroll snip of the input burst would also show `s_axis_tlast`.
+
+### Two documented honest limitations (state, don't hide, in the report)
+1. **Timing does not fully close:** WNS −0.374 ns on 2 of 87,343 endpoints. The board runs correctly
+   (those paths have margin under real conditions); full closure is future work. Inspect with
+   `analysis/results/timing_worst_paths.rpt`.
+2. **1-char-word-after-multipiece bug:** `a long`→`along`, `t vocab`→`tvocab`; 2/66 corpus lines.
+   H1-class residual; deferred (a fix is sim-only — no re-flash). Detail in `MISMATCH_REPORT.md`.
+
+---
+
 ## 🔜 OPEN ITEMS — handoff to Rafi
 
 **✅ DONE — DMA instead of byte-by-byte AXI-Lite polling (optimization R2).** Verified on-board

@@ -1268,3 +1268,70 @@ the energy inputs.
 match), latency (core vs overhead), jitter/determinism (CPU up to ~255 us spikes vs FPGA zero),
 throughput, and energy (**~150-285x**), all with figures. Remaining items are report write-up only;
 the 1-char-after-multipiece bug stays a documented known limitation (optional sim-only fix later).
+
+---
+
+## Stage 5 — Partner evidence pack (report deliverables) — 2026-06-21
+
+Goal: turn the finished results into hand-over evidence for the report (partner Rafi + the
+professor), so every graph/claim is backed by a raw file. Nothing new was *computed* here except
+the Vivado utilization/timing reports; this stage packages and defends what already existed.
+
+### New evidence folder `analysis/evidence/`
+- **`EVIDENCE_INDEX.md`** — master map: every P0/P1/P2 deliverable → status → file → book chapter,
+  plus a §B capture-checklist (Tcl commands + screenshot list) for the Vivado/board items.
+- **`ENERGY_CALCULATION.md`** — the energy-efficiency defense sheet: formula
+  (`energy/token = power / throughput`), every input with provenance, and the honest **~152× (marginal)
+  to ~285× (total)** range with all four caveats (vectorless/Low confidence, datapath-vs-SoC,
+  1-core-vs-16-thread, peak-vs-avg CPU power).
+- **`MISMATCH_REPORT.md`** — corpus description + the 64/66 result, separating the 13.6% by-design
+  punctuation omission from the **2 real edge-case bugs**, both decoded: idx 27 `a`→`along`
+  (`summarize a long`), idx 62 `t`→`tv` (`map(t => vocab`). Same root cause (1-char word after a
+  multi-piece word).
+- **`BENCHMARK_SETUP.md`** — CPU methodology (Ryzen 7 7435HS, 8C/16T, 16-thread `encode_batch`, Rust
+  `backend_tokenizer`, `add_special_tokens=False`, Python 3.14) + FPGA sim methodology
+  (`tb_corpus_perf`, 1 byte/clk, `fabric_us = cycles × 0.01`), so the comparison is defensibly fair.
+- **`tb_axi_dma_transcript.txt`** — the captured xsim PASS console (deliverable #10, see below).
+
+### Vivado reports via a one-shot script `analysis/gen_reports.tcl`
+`source` it in the Vivado Tcl console (project open); it opens `impl_1` if needed, then writes
+utilization + timing + copies the user `.xdc`, and echoes the headline WNS.
+- **Utilization** (`results/utilization_impl.rpt`, `..._hier.rpt`): **22,511 LUT (16.7%),
+  26,534 FF (9.9%), 212 BRAM (58.1%), 0 DSP** — the tokenizer is BRAM-bound (the two CSR tries), as
+  expected.
+- **Timing** (`results/timing_summary.rpt`): **WNS = −0.374 ns, TNS = −0.703 ns, 2 failing endpoints
+  of 87,343** (improved from the earlier −0.626). **100 MHz does NOT fully close** — documented
+  honestly for Ch. 6.5/10.5; the board runs correctly because the 2 failing paths have margin under
+  actual conditions. Closing them is listed as future work.
+- **Bug found & fixed in the script:** the first version copied *every* XDC via
+  `get_files -filter {FILE_TYPE == XDC}`, which dumped ~37 IP-generated/OOC constraint files
+  (`design_1_*`, `bd_*`, `*_ooc.xdc`) into `results/`. Restricted to the user fileset:
+  `get_files -of [get_filesets constrs_1] ...`. Stray files removed with `git clean`.
+
+### tb_axi_dma — primary DMA-protocol simulation evidence (P0 #10)
+Three cases (`hello` 1-tok, `embed` 2-tok, `embedding` 3-tok) all **PASS**: token IDs match
+bert-base-uncased, `m_axis_tlast` lands on exactly the final token, and `TOKEN_COUNT (0x0C)` reports
+the right count. Clean finish at 5735 ns.
+- **Lesson (false alarm):** a first `run all` hit the 5 ms watchdog ("TIMED OUT") — *not* a DUT bug.
+  It was a stale/half-elaborated xsim snapshot; **`restart; run all`** forces a clean run that passes.
+  A signal-state probe (`get_value` after a bounded `run`) confirmed the pipeline drains fully
+  (`tok_count=3`, `pipe_busy=0`, `input_done=0`) — the design was never stuck. Noted at the top of
+  the transcript so it isn't re-debugged.
+
+### Waveform (P1 #11) — `analysis/figures/waveform.jpg`
+The `embedding` end-of-packet: `m_axis_tdata = 4667` (final token, decimal radix) with
+`m_axis_tvalid` high, **`m_axis_tlast` pulsing on that token**, `m_axis_tready = 1` (the S2MM model
+accepting), and `s_axi_rdata` stepping `2 → 3` (firmware reading `TOKEN_COUNT = 3`). Input-side
+`s_axis_tlast` is off-frame here (covered by the transcript); an optional input-burst snip would
+close it.
+
+### Screenshots committed
+`analysis/figures/block_design.jpg` (MicroBlaze, AXI DMA, SmartConnect, MIG/DDR, tokenizer IP) and
+`analysis/figures/address_editor.jpg` (tokenizer 0x44A0_0000, AXI DMA 0x41E1_0000, timer, DDR
+0x8000_0000 — the exact addresses `echo.c` uses).
+
+### Status
+**All P0 deliverables (1–10) are DONE**, plus **P1 #11 (waveform)**. Remaining are partner/optional
+(see HANDOFF "Stage 5 open items"): board TCP regression log, Route B (partner's other route), Mermaid
+PNG/SVG exports (book-side), board photo. The timing miss (−0.374 ns) and the 1-char-word bug remain
+the two documented honest limitations.
