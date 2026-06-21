@@ -16,11 +16,11 @@ All paths are relative to `analysis/` unless noted. Repo: `tokenizer-vivado` (ua
 | 3 | AXI-timer DMA-latency sweep across lengths | ✅ / 🟡 | `results/fpga_results.csv` (66-pt fabric sweep) + board points 54–72 µs; **wider on-board sweep = optional** (§C) | Ch 10.3.2 / C26 |
 | 4 | CPU benchmark script/log + 7435HS + 16-thread | 📝 | `evidence/BENCHMARK_SETUP.md` + `cpu_tokenizer_benchmark.py` + `results/cpu_*.csv` | Ch 10.3–10.4 |
 | 5 | Corpus + mismatch list for the 2/66 | 📝 | `evidence/MISMATCH_REPORT.md` + `corpus.txt` | Ch 10.2 |
-| 6 | Vivado `report_utilization` | 🟡 | **capture — §B.1** | Ch 10.5 |
-| 7 | Vivado `report_timing_summary` + `.xdc` | 🟡 | **capture — §B.2** (.xdc: `uart.srcs/constrs_1/`) | Ch 6.5 / 10.5 |
+| 6 | Vivado `report_utilization` | ✅ | `results/utilization_impl.rpt`, `results/utilization_hier.rpt` (LUT 22,511 / FF 26,534 / BRAM 212 / DSP 0) | Ch 10.5 |
+| 7 | Vivado `report_timing_summary` + `.xdc` | ✅ | `results/timing_summary.rpt` (WNS −0.374 ns, TNS −0.703, 2 failing eps), `results/Nexys-Video-Master.xdc` | Ch 6.5 / 10.5 |
 | 8 | Block design screenshot | ✅ | `figures/block_design.jpg` | Ch 6 / 8 |
 | 9 | Address Editor screenshot | ✅ | `figures/address_editor.jpg` | Ch 8 |
-| 10 | `tb_axi_dma.v` + xsim PASS transcript | ✅ / 🟡 | source in `uart.srcs/sim_1/new/tb_axi_dma.v`; **re-capture transcript — §B.5** | Ch 9 |
+| 10 | `tb_axi_dma.v` + xsim PASS transcript | ✅ | source `uart.srcs/sim_1/new/tb_axi_dma.v`; transcript `evidence/tb_axi_dma_transcript.txt` (3/3 PASS) | Ch 9 |
 
 ## P1 — strengthens chapters
 

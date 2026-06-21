@@ -1,0 +1,38 @@
+tb_axi_dma — xsim behavioral simulation transcript (Stage 5 P0 #10)
+Simulator: Vivado xsim 2025.2 | DUT: tokenizer_axi_lite (AXI4-Stream / DMA datapath, R2)
+Source:   uart.srcs/sim_1/new/tb_axi_dma.v
+
+What this proves (primary simulation evidence for Ch. 9):
+  - the AXI4-Stream input (MM2S model) and output (S2MM model) datapath produces the correct
+    token IDs (identical to HuggingFace bert-base-uncased),
+  - m_axis_tlast is asserted on EXACTLY the final token of each response (DMA end-of-packet),
+  - the AXI-Lite TOKEN_COUNT register (0x0C) reports the right token count (what firmware reads).
+
+Cases cover the three word shapes: single-token, two-piece, and three-piece (continuation).
+
+------------------------------------------------------------ CONSOLE OUTPUT
+============================================================
+ tb_axi_dma : AXI4-Stream (DMA) datapath + TLAST (R2)
+============================================================
+  [hello] PASS (1 tokens, tlast on last) -> 7592
+  [embed] PASS (2 tokens, tlast on last) -> 7861 8270
+  [embedding] PASS (3 tokens, tlast on last) -> 7861 8270 4667
+============================================================
+ AXI DMA STREAM TESTS PASSED
+============================================================
+$finish called at time : 5735 ns : File ".../uart.srcs/sim_1/new/tb_axi_dma.v" Line 240
+
+------------------------------------------------------------ END-OF-RUN STATE (post-$finish poll)
+t = 5735 ns
+s_axis_tvalid = 0   s_axis_tready = 1
+in_fifo_full = 0    in_fifo_wr_en = 0    in_fifo_empty = 1
+tok_word_busy = 0   tok_pipeline_busy = 0
+input_done = 0      out_fifo_empty = 1
+tok_count = 3       ntok = 3             last_seen = 1
+  -> pipeline fully drained and idle after the final response; TOKEN_COUNT(0x0C)=3 matches the
+     three tokens captured on the master stream, and input_done has been cleared by the m_axis
+     tlast handshake, ready for the next transfer.
+
+Note: run the sim with `restart; run all` (a clean elaboration). A `run all` issued against a
+stale/half-loaded snapshot can hit the 5 ms watchdog (line 248); `restart` forces the clean run
+shown above, which finishes normally at line 240.
