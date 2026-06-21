@@ -397,7 +397,7 @@ module tb_axi_pipeline;
                 uut.u_tokenizer.u_trie_engine.ready,
                 uut.u_tokenizer.u_trie_engine.state,
                 uut.u_tokenizer.u_trie_engine.replaying,
-                uut.u_tokenizer.u_trie_engine.word_done_pending,
+                uut.u_tokenizer.u_trie_engine.word_done_count,
                 uut.u_tokenizer.u_trie_engine.pending_char_valid,
                 uut.u_tokenizer.u_trie_engine.best_end,
                 uut.u_tokenizer.u_trie_engine.buf_end,
@@ -420,7 +420,7 @@ module tb_axi_pipeline;
                 uut.u_tokenizer.u_trie_engine.buf_end,
                 uut.u_tokenizer.u_trie_engine.m_start,
                 uut.u_tokenizer.u_trie_engine.scan_ptr,
-                uut.u_tokenizer.u_trie_engine.word_done_pending,
+                uut.u_tokenizer.u_trie_engine.word_done_count,
                 uut.u_tokenizer.u_trie_engine.replaying,
                 uut.u_tokenizer.u_trie_engine.pending_char_valid);
         if (uut.u_tokenizer.u_trie_engine.out_token_valid)
