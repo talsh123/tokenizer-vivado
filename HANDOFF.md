@@ -82,7 +82,13 @@ Rule: verify all RTL/BD in sim → ONE implementation run → Vitis items. Statu
 **Phase-1 Vivado batch = just #2; Vitis #7/#8/#10 are coded + committed.** Next: validate BD clean →
 one synthesis/implementation → re-flash → **run `apply_phy_patch.ps1` if the BSP was regenerated** →
 on-board reverify (golden vectors + the 2 ex-mismatch lines → expect 66/66).
-Full detail in `JOURNAL.md` ("Hardening pass status" + "Bug #2 fixed").
+Full detail in `JOURNAL.md` ("Hardening pass status" + "Bug #2 fixed" + "Vitis hardening").
+
+**Tooling (in `analysis/`):** `run_all_tbs.tcl` runs all 12 testbenches in one action with a PASS/FAIL
+summary; `gen_reports.tcl` regenerates post-impl utilization + timing (+ copies the `constrs_1` xdc).
+If a Generate-Bitstream run shows `CRITICAL WARNING [BD 41-759] … s_axis_tvalid tied-off`, the
+DMA→tokenizer input came unwired (module-ref staleness) — reconnect `axi_dma_0/M_AXIS_MM2S →
+tokenizer_axi_lite_0/s_axis` and re-validate before flashing.
 
 ---
 

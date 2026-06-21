@@ -1408,3 +1408,49 @@ Resolution so far:
 
 **Phase-1 (Vivado) batch is therefore just #2.** Once the BD validates clean (mmcm_locked restored),
 run one synthesis/implementation, then proceed to the Vitis items.
+
+---
+
+## Vitis hardening (#7/#8/#10) + regression tooling — 2026-06-21
+
+With #2 fixed in RTL and #1/#9 settled, the three firmware-side items were implemented in the Vitis
+project (`C:\Users\talsh\Vitis\final_project_eth_nexys_video`).
+
+### #7 — zero-token DMA robustness (`echo.c`)
+AXI-Stream `TLAST` must ride a valid data beat, so a literal "empty-packet TLAST" is not standards-
+clean. The existing `has_word` guard (never launch a DMA on boundary-only input) remains the primary
+fix; added `tokenizer_dma_recover()` which `XAxiDma_Reset`s both channels on an MM2S or S2MM timeout,
+so a stalled transfer self-recovers instead of wedging tokenization until reboot. Both MM2S and S2MM
+timeout paths now call it.
+
+### #8 — tighter cache invalidate (`echo.c`)
+The token count comes from the MMIO `TOKEN_COUNT (0x0C)` register (not cached). `tokenizer_dma_run`
+now reads it first, then invalidates only `ntok × 2` bytes of `dma_tok_buf` instead of the whole
+2 KB — a couple of cache lines on a typical short response. The pre-transfer invalidate stays full
+(ntok is unknown before the transfer).
+
+### #10 — durable RTL8211E PHY patch (the BSP-wipe problem solved)
+The two PHY patches live in BSP files that a `.xsa` re-read overwrites. Durable mechanism added under
+`lwip_echo_server/src/phy_patch/`:
+- canonical patched copies `xaxiemacif_physpeed.c.golden` + `xadapter.c.golden`,
+- `apply_phy_patch.ps1` — auto-finds the BSP `netif` dir, backs up the stock files to `*.stock_bak`,
+  copies the patches in, verifies the `MY CODE` marker. One command after any BSP regen.
+- **Gotcha caught:** dropping the copies as `.c` made the Vitis IDE auto-add them to
+  `USER_COMPILE_SOURCES`, which would dup-link against the BSP lwIP lib. Fixed by the `.golden`
+  extension (the IDE ignores non-`.c`) and reverting `UserConfig.cmake`.
+
+Vitis commits: `a403add` (#7/#8/#10) + `7b400dc` (the `.golden` correction). The persistent
+`vitis-bsp-phy-patches` memory note now points at the script.
+
+### Regression tooling (uart repo)
+- The #2 signal rename (`word_done_pending → word_done_count`) broke an internal-signal probe in
+  `tb_axi_pipeline.v` (two `$display` monitors) — updated (`1c402c6`). A grep confirms no other sim
+  file references the old name (only a comment in `tb_word_boundary.v`).
+- `analysis/run_all_tbs.tcl` — runs all 12 testbenches in one action (each self-terminates at
+  `$finish`), reads each `simulate.log`, and prints a PASS/FAIL summary. `analysis/gen_reports.tcl`
+  regenerates utilization/timing after the build (now scoped to `constrs_1` so it no longer dumps the
+  per-IP generated XDCs).
+
+**State:** #7/#8/#10 coded + committed; pending the on-board reverify after the new bitstream is
+flashed (run `apply_phy_patch.ps1` if the BSP was regenerated). Implementation run is the only
+remaining gate to "everything on silicon."

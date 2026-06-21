@@ -178,19 +178,45 @@ round-trip per segment.
 ## 8. Known limitations (from the 66-line corpus evaluation, 2026-06-21)
 
 Measured against HuggingFace `bert-base-uncased` over a realistic 66-line corpus (`analysis/`):
-**97% exact word-token match (64/66)**. The remaining differences are characterized, not silent:
+originally **97% (64/66)**; now **100% (66/66)** after the one-character-word fix below (sim-verified;
+on-silicon once the fixed bitstream is flashed). The remaining differences are by-design, not silent:
 
 - **Punctuation is dropped by design.** `pre_tokenizer.v` treats every non-`[a-z0-9]` byte as a word
   boundary and emits no standalone-punctuation token, whereas BERT emits one per punctuation mark.
   This accounts for **13.6%** of BERT's tokens across the corpus. Expected and documented, not a bug.
-- **One-character-word merge bug (2/66 lines).** A one-character word that *immediately follows a
-  multi-subword word* fails to flush at its trailing boundary and is concatenated with the next word:
-  `...summarize a long pdf...` → `along` (idx 27); `...vocab[t] ?? vocab...` → `tvocab` (idx 62).
-  Proven trigger (counter-example idx 0 `...tie a tie` matches, where `a` follows a single-piece word).
-  Root cause: residual backtracking/boundary state in `trie_engine.v` — an **H1-class sibling**.
-  **Decision: documented, not fixed** (submission-day RTL risk; 97% is a strong, honest result). A
-  future fix only needs an xsim re-run of `tb_corpus_perf` to refresh the data — no re-synth/re-flash.
+- **One-character-word merge bug — ✅ FIXED (was 2/66 lines).** A one-character word that *immediately
+  follows a multi-subword word* failed to flush at its trailing boundary and was concatenated with the
+  next word: `...summarize a long pdf...` → `along` (idx 27); `...vocab[t] ?? vocab...` → `tvocab`
+  (idx 62). **Root cause:** `trie_engine.v`'s `word_done_pending` was a *single bit*; when a 1-char
+  word's boundary arrived while the previous multi-piece word was still replaying (the racing-char
+  skid having pulled the 1-char word in early), the second boundary collided with the first
+  (`1|1 = 1`) and was lost. **Fix:** `word_done_pending` → `word_done_count`, a 2-bit saturating
+  counter (+1 per boundary, −1 per finalize), so colliding boundaries are preserved. **Verified:**
+  new `tb_word_boundary.v` (8/8, incl. `summarize a long`, `vocab t vocab`, `embed embedding a hi`)
+  and the full corpus 64/66 → **66/66**, `inspect_mismatch.py` 0 mismatches. Sim-only fix (no vocab
+  change); detail in `JOURNAL.md` "Bug #2 fixed" and `analysis/evidence/MISMATCH_REPORT.md`.
 - **ASCII only.** Non-Latin / accented / emoji input is unsupported (the `analysis/divergence.txt`
   set); BERT normalizes Unicode. Out of scope for the hardware char map.
 - **Fixed vocabulary in BRAM.** Changing the vocabulary requires re-running `vocab_parser.py` and
   re-synthesizing; the CPU just loads a different file.
+
+---
+
+## 9. Hardening pass (2026-06-21)
+
+A final six-item triage after the evaluation. Workflow rule: verify every RTL/BD change in
+simulation, then a **single** synthesis/implementation run, then the firmware (Vitis) items — to
+avoid repeated long implementation runs.
+
+| # | Item | Resolution | Where |
+|---|------|------------|-------|
+| #2 | 1-char-word-after-multipiece merge | ✅ **Fixed**, sim-verified 66/66 (`word_done_count` counter) — see §8 | `trie_engine.v` |
+| #1 | Post-route timing **WNS −0.374 ns** (2/87,343 endpoints) | ✅ **Documented benign**: both failing paths are `ASYNC_REG=1` CDC reset synchronizers **inside the AMD Tri-Mode Ethernet MAC** (`clkout0 → clkout1`, a clock and its phase-shifted sibling); all user logic meets timing with **+0.6 ns**. Evidence: `analysis/results/timing_failing.rpt`. | (vendor IP) |
+| #7 | Zero-token DMA can't signal TLAST | ✅ **Firmware**: AXI-Stream TLAST must ride a data beat, so the `has_word` guard (never arm a 0-token DMA) is the correct fix; added `tokenizer_dma_recover()` to reset the DMA on any MM2S/S2MM timeout so a stall can't wedge the server. | `echo.c` |
+| #8 | Cache invalidate over-broad | ✅ **Firmware**: post-transfer D-cache invalidate sized to `ntok×2` B (read `TOKEN_COUNT` first) instead of the full 2 KB buffer. | `echo.c` |
+| #9 | `init_calib_complete` not in reset path | ⏸️ **Deferred** (documented): correct fix is `AND(clk_wiz_1/locked, init_calib_complete) → rst_clk_wiz_1_100M/dcm_locked` (the block that resets MicroBlaze + peripherals — **not** the MIG reset block). Theoretical race only (ms of BRAM boot vs µs of calibration); deferred to protect the single implementation run. | block design |
+| #10 | PHY patch wiped on every BSP regen | ✅ **Durable mechanism**: canonical patched copies kept as `lwip_echo_server/src/phy_patch/*.c.golden` (`.golden` so the IDE can't auto-compile them → would dup-link) + `apply_phy_patch.ps1` for one-command re-apply after any `.xsa` re-read. | Vitis app |
+
+**Regression safety:** the #2 rename (`word_done_pending → word_done_count`) broke one internal-signal
+probe in `tb_axi_pipeline.v` (now updated). `analysis/run_all_tbs.tcl` runs all 12 testbenches in one
+action with a PASS/FAIL summary. Post-impl reports are regenerated by `analysis/gen_reports.tcl`.

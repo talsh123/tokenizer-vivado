@@ -215,11 +215,16 @@ worth it.
 ### Done
 - **F1** ✅ — pipeline-busy STATUS bit + drained wait loop, shipped as review item **M4**. The blind
   ~500 µs per-packet floor is gone; latency now scales with token count.
+- **R2** ✅ — AXI-Stream + AXI DMA datapath, shipped and verified on-board (**~14× vs MMIO**; DMA
+  latency flat ~54–72 µs). See §(f) R2 above and `CODE_REVIEW.md` §7.
+- **Correctness #2** ✅ — the 1-char-word-after-multipiece merge bug fixed (`word_done_pending` single
+  bit → `word_done_count` saturating counter); corpus **64/66 → 66/66** (sim). See `CODE_REVIEW.md` §8/§9.
+- **Firmware hardening** ✅ — #7 DMA reset-on-timeout recovery, #8 `ntok×2`-sized cache invalidate, and
+  #10 durable RTL8211E PHY patch (`lwip_echo_server/src/phy_patch/*.golden` + `apply_phy_patch.ps1`).
 
-### Next priority — the handoff "must-do"
-- **R2** — AXI-Stream/DMA datapath. With F1 done, the per-byte MMIO loop is the dominant on-board
-  cost (~50–100 cyc/byte software overhead); this is the single must-do optimization remaining.
-  See the R2 detail above for the mechanism and handoff notes.
+### Optimization options remaining (optional future work)
+- R2 (the previous "must-do") is **done**. Everything below is optional; verify outputs carefully
+  (see §4) before shipping any of it.
 
 ### Quick wins (small, low-risk, high return)
 - **A2 + A3** — restructure the search FSM to 2 cyc/probe and drop `S_CALC_MID`. Pure

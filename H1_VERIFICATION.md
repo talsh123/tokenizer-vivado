@@ -9,6 +9,14 @@ takes a path that was missing a next-state assignment. The result is one of:
 This document gives you several independent ways to confirm the bug on the
 **unfixed** RTL, and a list of candidate words likely to trigger it.
 
+> **Status (2026-06-21):** H1 itself is **fixed and verified**. A related **H1-class sibling** was
+> later found and fixed too — a one-character word immediately after a multi-piece word merged with
+> the next word (`a long`→`along`), because `trie_engine.v`'s single-bit `word_done_pending` lost a
+> second boundary that arrived during the previous word's replay. Fix: `word_done_pending` →
+> `word_done_count` (2-bit saturating counter). Corpus **64/66 → 66/66** (sim); see `CODE_REVIEW.md`
+> §8/§9, `JOURNAL.md` "Bug #2 fixed", and `tb_word_boundary.v`. The verification methods below still
+> apply to both.
+
 ---
 
 ## 0. The one fact that makes checking easy

@@ -107,7 +107,9 @@ or the VS Code Mermaid extension → PNG **and** SVG → `evidence/figures/`. Ne
 
 ## What I produced this pass (📝, committed)
 - `evidence/ENERGY_CALCULATION.md` — the ~285×/152× defense sheet (P0 #2)
-- `evidence/MISMATCH_REPORT.md` — 64/66 + the 2 decoded failures (P0 #5)
+- `evidence/MISMATCH_REPORT.md` — the 2 decoded failures + their fix (P0 #5). **Update:** the #2 fix
+  (`word_done_count` counter) took the corpus **64/66 → 66/66** in sim; re-run `plot_results.py` to
+  refresh `correctness.png` to 100%. On-silicon 66/66 lands with the fixed bitstream.
 - `evidence/BENCHMARK_SETUP.md` — CPU 7435HS/16-thread + FPGA sim methodology (P0 #4)
 - `evidence/EVIDENCE_INDEX.md` — this file
 
