@@ -1,0 +1,157 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+-------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (win64) Build 6299465 Fri Nov 14 19:35:11 GMT 2025
+| Date         : Sun Jun 21 19:28:17 2026
+| Host         : Talsh running 64-bit major release  (build 9200)
+| Command      : report_timing -slack_lesser_than 0 -max_paths 10 -file c:/Users/talsh/.Xilinx/projects/uart/analysis/results/timing_failing.rpt
+| Design       : design_1_wrapper
+| Device       : 7a200t-sbg484
+| Speed File   : -1  PRODUCTION 1.23 2018-06-13
+| Design State : Routed
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (VIOLATED) :        -0.374ns  (required time - arrival time)
+  Source:                 design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>
+                            (rising edge-triggered cell FDRE clocked by clkout0  {rise@0.000ns fall@4.000ns period=8.000ns})
+  Destination:            design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_i/tx_reset90_sync/data_sync_reg0/D
+                            (rising edge-triggered cell FDRE clocked by clkout1  {rise@2.000ns fall@6.000ns period=8.000ns})
+  Path Group:             clkout1
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            2.000ns  (clkout1 rise@2.000ns - clkout0 rise@0.000ns)
+  Data Path Delay:        2.058ns  (logic 0.456ns (22.156%)  route 1.602ns (77.844%))
+  Logic Levels:           0  
+  Clock Path Skew:        -0.079ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    3.320ns = ( 5.320 - 2.000 ) 
+    Source Clock Delay      (SCD):    4.012ns
+    Clock Pessimism Removal (CPR):    0.614ns
+  Clock Uncertainty:      0.195ns  ((TSJ^2 + DJ^2)^1/2) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Discrete Jitter          (DJ):    0.131ns
+    Phase Error              (PE):    0.120ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clkout0 rise edge)    0.000     0.000 r  
+    R4                                                0.000     0.000 r  sys_clock (IN)
+                         net (fo=0)                   0.000     0.000    design_1_i/clk_wiz_1/inst/clk_in1
+    R4                   IBUF (Prop_ibuf_I_O)         1.475     1.475 r  design_1_i/clk_wiz_1/inst/clkin1_ibufg/O
+                         net (fo=1, routed)           1.233     2.708    design_1_i/clk_wiz_1/inst/clk_in1_design_1_axi_ethernet_0_gtxclk_0
+    MMCME2_ADV_X1Y2      MMCME2_ADV (Prop_mmcme2_adv_CLKIN1_CLKOUT2)
+                                                     -7.432    -4.724 r  design_1_i/clk_wiz_1/inst/mmcm_adv_inst/CLKOUT2
+                         net (fo=1, routed)           1.808    -2.915    design_1_i/clk_wiz_1/inst/clk_125_design_1_axi_ethernet_0_gtxclk_0
+    BUFGCTRL_X0Y5        BUFG (Prop_bufg_I_O)         0.096    -2.819 r  design_1_i/clk_wiz_1/inst/clkout3_buf/O
+                         net (fo=85, routed)          2.106    -0.713    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/gtx_clk
+    MMCME2_ADV_X1Y0      MMCME2_ADV (Prop_mmcme2_adv_CLKIN1_CLKOUT0)
+                                                      0.088    -0.625 r  design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/mmcm_adv_inst/CLKOUT0
+                         net (fo=1, routed)           2.697     2.073    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/clkout0
+    BUFGCTRL_X0Y1        BUFGCTRL (Prop_bufgctrl_I0_O)
+                                                      0.096     2.169 r  design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/clkout1_buf/O
+                         net (fo=1898, routed)        1.843     4.012    design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>
+    SLICE_X47Y89         FDRE                                         r  design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>
+  -------------------------------------------------------------------    -------------------
+    SLICE_X47Y89         FDRE (Prop_fdre_C_Q)         0.456     4.468 r  design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>
+                         net (fo=3, routed)           1.602     6.070    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_i/tx_reset90_sync/data_in
+    SLICE_X7Y88          FDRE                                         r  design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_i/tx_reset90_sync/data_sync_reg0/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock clkout1 rise edge)    2.000     2.000 r  
+    R4                                                0.000     2.000 r  sys_clock (IN)
+                         net (fo=0)                   0.000     2.000    design_1_i/clk_wiz_1/inst/clk_in1
+    R4                   IBUF (Prop_ibuf_I_O)         1.405     3.405 r  design_1_i/clk_wiz_1/inst/clkin1_ibufg/O
+                         net (fo=1, routed)           1.162     4.567    design_1_i/clk_wiz_1/inst/clk_in1_design_1_axi_ethernet_0_gtxclk_0
+    MMCME2_ADV_X1Y2      MMCME2_ADV (Prop_mmcme2_adv_CLKIN1_CLKOUT2)
+                                                     -7.674    -3.107 r  design_1_i/clk_wiz_1/inst/mmcm_adv_inst/CLKOUT2
+                         net (fo=1, routed)           1.723    -1.384    design_1_i/clk_wiz_1/inst/clk_125_design_1_axi_ethernet_0_gtxclk_0
+    BUFGCTRL_X0Y5        BUFG (Prop_bufg_I_O)         0.091    -1.293 r  design_1_i/clk_wiz_1/inst/clkout3_buf/O
+                         net (fo=85, routed)          1.972     0.679    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/gtx_clk
+    MMCME2_ADV_X1Y0      MMCME2_ADV (Prop_mmcme2_adv_CLKIN1_CLKOUT1)
+                                                      0.083     0.762 r  design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/mmcm_adv_inst/CLKOUT1
+                         net (fo=1, routed)           2.574     3.336    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/clkout1
+    BUFGCTRL_X0Y3        BUFGCTRL (Prop_bufgctrl_I0_O)
+                                                      0.091     3.427 r  design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/clkout2_buf/O
+                         net (fo=37, routed)          1.893     5.320    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_i/tx_reset90_sync/clk
+    SLICE_X7Y88          FDRE                                         r  design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_i/tx_reset90_sync/data_sync_reg0/C
+                         clock pessimism              0.614     5.933    
+                         clock uncertainty           -0.195     5.739    
+    SLICE_X7Y88          FDRE (Setup_fdre_C_D)       -0.043     5.696    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_i/tx_reset90_sync/data_sync_reg0
+  -------------------------------------------------------------------
+                         required time                          5.696    
+                         arrival time                          -6.070    
+  -------------------------------------------------------------------
+                         slack                                 -0.374    
+
+Slack (VIOLATED) :        -0.329ns  (required time - arrival time)
+  Source:                 design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>
+                            (rising edge-triggered cell FDRE clocked by clkout0  {rise@0.000ns fall@4.000ns period=8.000ns})
+  Destination:            design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>/<hidden>
+                            (rising edge-triggered cell FDRE clocked by clkout1  {rise@2.000ns fall@6.000ns period=8.000ns})
+  Path Group:             clkout1
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            2.000ns  (clkout1 rise@2.000ns - clkout0 rise@0.000ns)
+  Data Path Delay:        1.749ns  (logic 0.456ns (26.066%)  route 1.293ns (73.934%))
+  Logic Levels:           0  
+  Clock Path Skew:        -0.290ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    3.109ns = ( 5.109 - 2.000 ) 
+    Source Clock Delay      (SCD):    4.012ns
+    Clock Pessimism Removal (CPR):    0.614ns
+  Clock Uncertainty:      0.195ns  ((TSJ^2 + DJ^2)^1/2) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Discrete Jitter          (DJ):    0.131ns
+    Phase Error              (PE):    0.120ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clkout0 rise edge)    0.000     0.000 r  
+    R4                                                0.000     0.000 r  sys_clock (IN)
+                         net (fo=0)                   0.000     0.000    design_1_i/clk_wiz_1/inst/clk_in1
+    R4                   IBUF (Prop_ibuf_I_O)         1.475     1.475 r  design_1_i/clk_wiz_1/inst/clkin1_ibufg/O
+                         net (fo=1, routed)           1.233     2.708    design_1_i/clk_wiz_1/inst/clk_in1_design_1_axi_ethernet_0_gtxclk_0
+    MMCME2_ADV_X1Y2      MMCME2_ADV (Prop_mmcme2_adv_CLKIN1_CLKOUT2)
+                                                     -7.432    -4.724 r  design_1_i/clk_wiz_1/inst/mmcm_adv_inst/CLKOUT2
+                         net (fo=1, routed)           1.808    -2.915    design_1_i/clk_wiz_1/inst/clk_125_design_1_axi_ethernet_0_gtxclk_0
+    BUFGCTRL_X0Y5        BUFG (Prop_bufg_I_O)         0.096    -2.819 r  design_1_i/clk_wiz_1/inst/clkout3_buf/O
+                         net (fo=85, routed)          2.106    -0.713    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/gtx_clk
+    MMCME2_ADV_X1Y0      MMCME2_ADV (Prop_mmcme2_adv_CLKIN1_CLKOUT0)
+                                                      0.088    -0.625 r  design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/mmcm_adv_inst/CLKOUT0
+                         net (fo=1, routed)           2.697     2.073    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/clkout0
+    BUFGCTRL_X0Y1        BUFGCTRL (Prop_bufgctrl_I0_O)
+                                                      0.096     2.169 r  design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/clkout1_buf/O
+                         net (fo=1898, routed)        1.843     4.012    design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>
+    SLICE_X47Y89         FDRE                                         r  design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>
+  -------------------------------------------------------------------    -------------------
+    SLICE_X47Y89         FDRE (Prop_fdre_C_Q)         0.456     4.468 r  design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>
+                         net (fo=3, routed)           1.293     5.761    design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>/<hidden>
+    SLICE_X82Y90         FDRE                                         r  design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>/<hidden>
+  -------------------------------------------------------------------    -------------------
+
+                         (clock clkout1 rise edge)    2.000     2.000 r  
+    R4                                                0.000     2.000 r  sys_clock (IN)
+                         net (fo=0)                   0.000     2.000    design_1_i/clk_wiz_1/inst/clk_in1
+    R4                   IBUF (Prop_ibuf_I_O)         1.405     3.405 r  design_1_i/clk_wiz_1/inst/clkin1_ibufg/O
+                         net (fo=1, routed)           1.162     4.567    design_1_i/clk_wiz_1/inst/clk_in1_design_1_axi_ethernet_0_gtxclk_0
+    MMCME2_ADV_X1Y2      MMCME2_ADV (Prop_mmcme2_adv_CLKIN1_CLKOUT2)
+                                                     -7.674    -3.107 r  design_1_i/clk_wiz_1/inst/mmcm_adv_inst/CLKOUT2
+                         net (fo=1, routed)           1.723    -1.384    design_1_i/clk_wiz_1/inst/clk_125_design_1_axi_ethernet_0_gtxclk_0
+    BUFGCTRL_X0Y5        BUFG (Prop_bufg_I_O)         0.091    -1.293 r  design_1_i/clk_wiz_1/inst/clkout3_buf/O
+                         net (fo=85, routed)          1.972     0.679    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/gtx_clk
+    MMCME2_ADV_X1Y0      MMCME2_ADV (Prop_mmcme2_adv_CLKIN1_CLKOUT1)
+                                                      0.083     0.762 r  design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/mmcm_adv_inst/CLKOUT1
+                         net (fo=1, routed)           2.574     3.336    design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/clkout1
+    BUFGCTRL_X0Y3        BUFGCTRL (Prop_bufgctrl_I0_O)
+                                                      0.091     3.427 r  design_1_i/axi_ethernet_0/inst/mac/inst/tri_mode_ethernet_mac_support_clocking_i/clkout2_buf/O
+                         net (fo=37, routed)          1.682     5.109    design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>/<hidden>
+    SLICE_X82Y90         FDRE                                         r  design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>/<hidden>
+                         clock pessimism              0.614     5.722    
+                         clock uncertainty           -0.195     5.528    
+    SLICE_X82Y90         FDRE (Setup_fdre_C_D)       -0.095     5.433    design_1_wrapper/design_1/design_1_axi_ethernet_0_0/bd_929b/bd_929b_mac_0/bd_929b_mac_0_support/bd_929b_mac_0_block/<hidden>/<hidden>
+  -------------------------------------------------------------------
+                         required time                          5.433    
+                         arrival time                          -5.761    
+  -------------------------------------------------------------------
+                         slack                                 -0.329    
+
+
+
+
