@@ -94,7 +94,12 @@ module tb_tokenizer_axi_lite;
         .s_axi_rdata    (s_axi_rdata),
         .s_axi_rresp    (s_axi_rresp),
         .s_axi_rvalid   (s_axi_rvalid),
-        .s_axi_rready   (s_axi_rready)
+        .s_axi_rready   (s_axi_rready),
+        // AXI-Stream ports unused in this AXI-Lite testbench (DMA datapath) -- tie inputs off
+        .s_axis_tdata   (8'd0),
+        .s_axis_tvalid  (1'b0),
+        .s_axis_tlast   (1'b0),
+        .m_axis_tready  (1'b0)
     );
 
     // ========================================================================
