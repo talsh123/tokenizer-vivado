@@ -108,3 +108,67 @@ Together they implement a **hardware WordPiece (BERT) tokenizer** on a MicroBlaz
 | L1 | Low | `vocab_parser.py` (~195) | 32-bit token_ids `.mem` into 16-bit reg (warnings) |
 | L2 | Low | `tb_*.v` | No `[UNK]` / long-word / digit / overflow coverage |
 | L3 | Low | `tokenizer_axi_lite.v` (~236) | AXI read re-trigger if `arvalid` held high |
+
+---
+
+## 6. Resolution status (updated 2026-06-21)
+
+**All review findings H1–L3 are FIXED and verified.** Per-problem detail (engineering field,
+defect, surgical fix, verification evidence, status) is in `JOURNAL.md`; one-line summary here:
+
+| ID | Status | Fix (summary) | Verified |
+|----|--------|---------------|----------|
+| H1 | ✅ Fixed | `S_EMIT` replay-completion path finalizes the word independent of `word_done_pending` (no spurious `[UNK]`/lost tail) | xsim + on-board |
+| H2 | ✅ Fixed | node-0 binary-search underflow guarded (`edge_rd_addr==0 → S_EMIT`) | xsim + on-board |
+| M1 | ✅ Fixed | words > 32 chars forced to a single `[UNK]` instead of buffer corruption | xsim + on-board |
+| M2 | ✅ Fixed | output-FIFO overflow → sticky STATUS bit 2; M4 drain-while-sending also prevents the drop | xsim |
+| M3 | ✅ Fixed | `echo.c` forwards raw bytes (no per-segment synthetic boundary) | on-board TCP |
+| M4 | ✅ Fixed | real `pipeline_busy` STATUS bit 3 + deterministic drain replaces the blind ~500 µs delay | `tb_axi_pipeline` + on-board |
+| P1 | ✅ Fixed | pre-tokenizer pure valid/ready flow control + trie input skid + boundary-char capture | `tb_axi_pipeline` + on-board |
+| L1 | ✅ Fixed | `vocab_parser.py` writes token-id `.mem` as 4-hex to match the 16-bit reg | regen + xsim (no warnings) |
+| L2 | ✅ Fixed | added `[UNK]`/digit/long-word/overflow coverage across the testbenches | xsim |
+| L3 | ✅ Fixed | AXI read gated with `read_addr_serviced` (no re-trigger / double-pop if `arvalid` held) | xsim |
+
+(Plus two synthesis-warning cleanups: `char_buf` `ram_style` attribute removed, and `tok_word_busy`
+declaration moved ahead of first use.)
+
+---
+
+## 7. New architecture — R2: AXI-Stream + AXI DMA datapath (2026-06-21)
+
+After the review fixes, the dominant on-board cost was the **byte-by-byte AXI-Lite MMIO loop** in
+`echo.c` (poll STATUS + write `TX_DATA` per byte, poll + read per token) — ~1 ms for a 43-char line
+against ~10 µs of actual fabric work. **R2 replaces the transport** (the tokenizer core is untouched,
+so token IDs are bit-identical):
+
+**RTL (`tokenizer_axi_lite.v`, additive — AXI-Lite path unchanged):**
+- 8-bit AXI4-Stream **slave `s_axis`** feeds the existing input FIFO (`s_axis_tready = !in_fifo_full
+  && !in_fifo_wr_en`; FIFO write gained an `else if (s_axis_fire)` branch).
+- 16-bit AXI4-Stream **master `m_axis`** (one token per beat) drains the output FIFO (pop on
+  `out_fifo_rd_en || m_axis_fire`).
+- **TLAST framing:** `input_done` latches on the accepted `s_axis_tlast` byte; `m_axis_tlast =
+  m_axis_tvalid && out_fifo_one_left && input_done && !producing` — asserted on the token that empties
+  the FIFO once nothing more can be produced.
+- New **`TOKEN_COUNT (0x0C)`** register (write-to-clear, increments per enqueued token): simple-mode
+  S2MM doesn't report received length, so firmware reads the count here.
+- Clock association via `(* X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axi:s_axis:m_axis ..." *)` on
+  `s_axi_aclk` (clears `BD 41-967`).
+
+**Block design:** AXI DMA (Simple mode, MM2S 8-bit / S2MM 16-bit), MM2S → `s_axis`, `m_axis` → S2MM,
+direct (no width converters), all on the 100 MHz clock; DMA buffers live in DDR (`0x8xxx_xxxx`).
+
+**Firmware (`echo.c`):** `tokenizer_dma_init()` (SDT/base-address `XAxiDma` lookup — ours is
+`0x41E10000`, *not* the ethernet DMA at `0x41E00000`) + `tokenizer_dma_run()` (clear count → flush
+input → arm S2MM → kick MM2S → poll both → invalidate → read count). `recv_callback` does one DMA
+round-trip per segment.
+
+**Two bring-up defects found & fixed (full detail in `JOURNAL.md`):**
+- **Stale bitstream masquerading as a hardware fault** — `TOK_COUNT=0` despite correctly-wired
+  `s_axis`/`m_axis` (proven via firmware self-tests + `design_1.hwh` connectivity check); the
+  programmed bitstream wasn't the final build. Lesson: suspect the bitstream first.
+- **Zero-token TLAST hang** — boundary-only segments (telnet's `\r\n`) produce no token, so TLAST
+  never asserts and the simple-mode S2MM transfer hangs the lwIP callback → connection abort. Fixed
+  in `recv_callback` by never launching a DMA that can't produce ≥1 token (+ a bounded poll timeout).
+
+**Verified on-board:** all golden vectors correct; **~14× faster than MMIO** on the pangram
+(~1000 µs → 70 µs), advantage widening with input length (DMA latency flat ~54–72 µs vs MMIO linear).

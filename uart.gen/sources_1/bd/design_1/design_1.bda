@@ -323,6 +323,24 @@
             },
             "V10": {
                 "VT": "AC",
+                "BA": "0x41E10000",
+                "HA": "0x41E1FFFF",
+                "BP": "C_BASEADDR",
+                "HP": "C_HIGHADDR",
+                "MA": "Data",
+                "MX": "/microblaze_0",
+                "MI": "M_AXI_DP",
+                "MS": "SEG_axi_dma_0_Reg",
+                "MV": "xilinx.com:ip:microblaze:11.0",
+                "SX": "/axi_dma_0",
+                "SI": "S_AXI_LITE",
+                "SS": "Reg",
+                "SV": "xilinx.com:ip:axi_dma:7.1",
+                "TM": "data",
+                "TU": "register"
+            },
+            "V11": {
+                "VT": "AC",
                 "BA": "0x44A00000",
                 "HA": "0x44A00FFF",
                 "BP": "C_BASEADDR",
@@ -339,7 +357,45 @@
                 "TM": "data",
                 "TU": "register"
             },
-            "V11": {
+            "V12": {
+                "VT": "AC",
+                "BA": "0x80000000",
+                "HA": "0x9FFFFFFF",
+                "BP": "C_BASEADDR",
+                "HP": "C_HIGHADDR",
+                "MA": "Data_MM2S",
+                "MX": "/axi_dma_0",
+                "MI": "M_AXI_MM2S",
+                "MS": "SEG_mig_7series_0_memaddr",
+                "MV": "xilinx.com:ip:axi_dma:7.1",
+                "SX": "/mig_7series_0",
+                "SI": "S_AXI",
+                "MM": "memmap",
+                "SS": "memaddr",
+                "SV": "xilinx.com:ip:mig_7series:4.2",
+                "TM": "both",
+                "TU": "memory"
+            },
+            "V13": {
+                "VT": "AC",
+                "BA": "0x80000000",
+                "HA": "0x9FFFFFFF",
+                "BP": "C_BASEADDR",
+                "HP": "C_HIGHADDR",
+                "MA": "Data_S2MM",
+                "MX": "/axi_dma_0",
+                "MI": "M_AXI_S2MM",
+                "MS": "SEG_mig_7series_0_memaddr",
+                "MV": "xilinx.com:ip:axi_dma:7.1",
+                "SX": "/mig_7series_0",
+                "SI": "S_AXI",
+                "MM": "memmap",
+                "SS": "memaddr",
+                "SV": "xilinx.com:ip:mig_7series:4.2",
+                "TM": "both",
+                "TU": "memory"
+            },
+            "V14": {
                 "VT": "AC",
                 "BA": "0x80000000",
                 "HA": "0x9FFFFFFF",
@@ -358,7 +414,7 @@
                 "TM": "both",
                 "TU": "memory"
             },
-            "V12": {
+            "V15": {
                 "VT": "AC",
                 "BA": "0x80000000",
                 "HA": "0x9FFFFFFF",
@@ -377,7 +433,7 @@
                 "TM": "both",
                 "TU": "memory"
             },
-            "V13": {
+            "V16": {
                 "VT": "AC",
                 "BA": "0x80000000",
                 "HA": "0x9FFFFFFF",
@@ -396,7 +452,7 @@
                 "TM": "both",
                 "TU": "memory"
             },
-            "V14": {
+            "V17": {
                 "VT": "AC",
                 "BA": "0x80000000",
                 "HA": "0x9FFFFFFF",
@@ -415,7 +471,7 @@
                 "TM": "data",
                 "TU": "memory"
             },
-            "V15": {
+            "V18": {
                 "VT": "AC",
                 "BA": "0x80000000",
                 "HA": "0x9FFFFFFF",
@@ -506,6 +562,21 @@
             },
             {
                 "src": "V15",
+                "trg": "V2",
+                "EH": "2"
+            },
+            {
+                "src": "V16",
+                "trg": "V2",
+                "EH": "2"
+            },
+            {
+                "src": "V17",
+                "trg": "V2",
+                "EH": "2"
+            },
+            {
+                "src": "V18",
                 "trg": "V2",
                 "EH": "2"
             }

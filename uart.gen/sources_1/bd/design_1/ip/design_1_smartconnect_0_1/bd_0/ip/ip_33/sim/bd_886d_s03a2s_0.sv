@@ -107,7 +107,7 @@ input wire s_sc_b_send;
 (* X_INTERFACE_INFO = "xilinx.com:interface:sc:1.0 S_SC_B RECV" *)
 output wire s_sc_b_recv;
 (* X_INTERFACE_INFO = "xilinx.com:interface:sc:1.0 S_SC_B PAYLD" *)
-input wire [10 : 0] s_sc_b_payld;
+input wire [12 : 0] s_sc_b_payld;
 (* X_INTERFACE_INFO = "xilinx.com:interface:sc:1.0 M_SC_AW REQ" *)
 (* X_INTERFACE_MODE = "master" *)
 output wire m_sc_aw_req;
@@ -191,19 +191,19 @@ input wire s_axi_bready;
     .C_SC_AWUSER_WIDTH(0),
     .C_SC_BUSER_WIDTH(0),
     .C_MSC_ROUTE_WIDTH(1),
-    .C_SSC_ROUTE_WIDTH(5),
+    .C_SSC_ROUTE_WIDTH(7),
     .C_AWPAYLD_WIDTH(142),
     .C_ARPAYLD_WIDTH(142),
     .C_WPAYLD_WIDTH(52),
-    .C_RPAYLD_WIDTH(57),
-    .C_BPAYLD_WIDTH(11)
+    .C_RPAYLD_WIDTH(59),
+    .C_BPAYLD_WIDTH(13)
   ) inst (
     .aclk(aclk),
     .s_sc_r_req(1'D0),
     .s_sc_r_info(1'D0),
     .s_sc_r_send(1'D0),
     .s_sc_r_recv(),
-    .s_sc_r_payld(57'D0),
+    .s_sc_r_payld(59'D0),
     .s_sc_b_req(s_sc_b_req),
     .s_sc_b_info(s_sc_b_info),
     .s_sc_b_send(s_sc_b_send),

@@ -2,7 +2,7 @@
 //Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2025.2 (win64) Build 6299465 Fri Nov 14 19:35:11 GMT 2025
-//Date        : Sat Jun 20 18:35:32 2026
+//Date        : Sun Jun 21 14:33:30 2026
 //Host        : Talsh running 64-bit major release  (build 9200)
 //Command     : generate_target design_1.bd
 //Design      : design_1
@@ -10,7 +10,7 @@
 //--------------------------------------------------------------------------------
 `timescale 1 ps / 1 ps
 
-(* CORE_GENERATION_INFO = "design_1,IP_Integrator,{x_ipVendor=xilinx.com,x_ipLibrary=BlockDiagram,x_ipName=design_1,x_ipVersion=1.00.a,x_ipLanguage=VERILOG,numBlks=21,numReposBlks=20,numNonXlnxBlks=0,numHierBlks=1,maxHierDepth=1,numSysgenBlks=0,numHlsBlks=0,numHdlrefBlks=1,numPkgbdBlks=0,bdsource=USER,da_aeth_cnt=1,da_board_cnt=1,da_clkrst_cnt=3,da_mb_cnt=4,synth_mode=None}" *) (* HW_HANDOFF = "design_1.hwdef" *) 
+(* CORE_GENERATION_INFO = "design_1,IP_Integrator,{x_ipVendor=xilinx.com,x_ipLibrary=BlockDiagram,x_ipName=design_1,x_ipVersion=1.00.a,x_ipLanguage=VERILOG,numBlks=22,numReposBlks=21,numNonXlnxBlks=0,numHierBlks=1,maxHierDepth=1,numSysgenBlks=0,numHlsBlks=0,numHdlrefBlks=1,numPkgbdBlks=0,bdsource=USER,da_aeth_cnt=1,da_axi4_cnt=3,da_board_cnt=1,da_clkrst_cnt=3,da_mb_cnt=4,synth_mode=None}" *) (* HW_HANDOFF = "design_1.hwdef" *) 
 module design_1
    (DDR3_0_addr,
     DDR3_0_ba,
@@ -85,6 +85,39 @@ module design_1
   wire DDR3_0_ras_n;
   wire DDR3_0_reset_n;
   wire DDR3_0_we_n;
+  wire [7:0]axi_dma_0_M_AXIS_MM2S_TDATA;
+  wire axi_dma_0_M_AXIS_MM2S_TLAST;
+  wire axi_dma_0_M_AXIS_MM2S_TREADY;
+  wire axi_dma_0_M_AXIS_MM2S_TVALID;
+  wire [31:0]axi_dma_0_M_AXI_MM2S_ARADDR;
+  wire [1:0]axi_dma_0_M_AXI_MM2S_ARBURST;
+  wire [3:0]axi_dma_0_M_AXI_MM2S_ARCACHE;
+  wire [7:0]axi_dma_0_M_AXI_MM2S_ARLEN;
+  wire [2:0]axi_dma_0_M_AXI_MM2S_ARPROT;
+  wire axi_dma_0_M_AXI_MM2S_ARREADY;
+  wire [2:0]axi_dma_0_M_AXI_MM2S_ARSIZE;
+  wire axi_dma_0_M_AXI_MM2S_ARVALID;
+  wire [31:0]axi_dma_0_M_AXI_MM2S_RDATA;
+  wire axi_dma_0_M_AXI_MM2S_RLAST;
+  wire axi_dma_0_M_AXI_MM2S_RREADY;
+  wire [1:0]axi_dma_0_M_AXI_MM2S_RRESP;
+  wire axi_dma_0_M_AXI_MM2S_RVALID;
+  wire [31:0]axi_dma_0_M_AXI_S2MM_AWADDR;
+  wire [1:0]axi_dma_0_M_AXI_S2MM_AWBURST;
+  wire [3:0]axi_dma_0_M_AXI_S2MM_AWCACHE;
+  wire [7:0]axi_dma_0_M_AXI_S2MM_AWLEN;
+  wire [2:0]axi_dma_0_M_AXI_S2MM_AWPROT;
+  wire axi_dma_0_M_AXI_S2MM_AWREADY;
+  wire [2:0]axi_dma_0_M_AXI_S2MM_AWSIZE;
+  wire axi_dma_0_M_AXI_S2MM_AWVALID;
+  wire axi_dma_0_M_AXI_S2MM_BREADY;
+  wire [1:0]axi_dma_0_M_AXI_S2MM_BRESP;
+  wire axi_dma_0_M_AXI_S2MM_BVALID;
+  wire [31:0]axi_dma_0_M_AXI_S2MM_WDATA;
+  wire axi_dma_0_M_AXI_S2MM_WLAST;
+  wire axi_dma_0_M_AXI_S2MM_WREADY;
+  wire [3:0]axi_dma_0_M_AXI_S2MM_WSTRB;
+  wire axi_dma_0_M_AXI_S2MM_WVALID;
   wire [31:0]axi_ethernet_0_dma_M_AXIS_CNTRL_TDATA;
   wire [3:0]axi_ethernet_0_dma_M_AXIS_CNTRL_TKEEP;
   wire axi_ethernet_0_dma_M_AXIS_CNTRL_TLAST;
@@ -391,6 +424,22 @@ module design_1
   wire microblaze_0_axi_periph_M05_AXI_WREADY;
   wire [3:0]microblaze_0_axi_periph_M05_AXI_WSTRB;
   wire microblaze_0_axi_periph_M05_AXI_WVALID;
+  wire [9:0]microblaze_0_axi_periph_M06_AXI_ARADDR;
+  wire microblaze_0_axi_periph_M06_AXI_ARREADY;
+  wire microblaze_0_axi_periph_M06_AXI_ARVALID;
+  wire [9:0]microblaze_0_axi_periph_M06_AXI_AWADDR;
+  wire microblaze_0_axi_periph_M06_AXI_AWREADY;
+  wire microblaze_0_axi_periph_M06_AXI_AWVALID;
+  wire microblaze_0_axi_periph_M06_AXI_BREADY;
+  wire [1:0]microblaze_0_axi_periph_M06_AXI_BRESP;
+  wire microblaze_0_axi_periph_M06_AXI_BVALID;
+  wire [31:0]microblaze_0_axi_periph_M06_AXI_RDATA;
+  wire microblaze_0_axi_periph_M06_AXI_RREADY;
+  wire [1:0]microblaze_0_axi_periph_M06_AXI_RRESP;
+  wire microblaze_0_axi_periph_M06_AXI_RVALID;
+  wire [31:0]microblaze_0_axi_periph_M06_AXI_WDATA;
+  wire microblaze_0_axi_periph_M06_AXI_WREADY;
+  wire microblaze_0_axi_periph_M06_AXI_WVALID;
   wire microblaze_0_debug_CAPTURE;
   wire microblaze_0_debug_CLK;
   wire microblaze_0_debug_DISABLE;
@@ -430,9 +479,72 @@ module design_1
   wire [0:0]rst_mig_7series_0_100M_peripheral_aresetn;
   wire [0:0]rst_mig_7series_0_100M_peripheral_aresetn1;
   wire sys_clock;
+  wire [15:0]tokenizer_axi_lite_0_m_axis_TDATA;
+  wire tokenizer_axi_lite_0_m_axis_TLAST;
+  wire tokenizer_axi_lite_0_m_axis_TREADY;
+  wire tokenizer_axi_lite_0_m_axis_TVALID;
   wire usb_uart_rxd;
   wire usb_uart_txd;
 
+  design_1_axi_dma_0_0 axi_dma_0
+       (.axi_resetn(rst_mig_7series_0_100M_peripheral_aresetn),
+        .m_axi_mm2s_aclk(axi_ethernet_0_refclk_clk_200),
+        .m_axi_mm2s_araddr(axi_dma_0_M_AXI_MM2S_ARADDR),
+        .m_axi_mm2s_arburst(axi_dma_0_M_AXI_MM2S_ARBURST),
+        .m_axi_mm2s_arcache(axi_dma_0_M_AXI_MM2S_ARCACHE),
+        .m_axi_mm2s_arlen(axi_dma_0_M_AXI_MM2S_ARLEN),
+        .m_axi_mm2s_arprot(axi_dma_0_M_AXI_MM2S_ARPROT),
+        .m_axi_mm2s_arready(axi_dma_0_M_AXI_MM2S_ARREADY),
+        .m_axi_mm2s_arsize(axi_dma_0_M_AXI_MM2S_ARSIZE),
+        .m_axi_mm2s_arvalid(axi_dma_0_M_AXI_MM2S_ARVALID),
+        .m_axi_mm2s_rdata(axi_dma_0_M_AXI_MM2S_RDATA),
+        .m_axi_mm2s_rlast(axi_dma_0_M_AXI_MM2S_RLAST),
+        .m_axi_mm2s_rready(axi_dma_0_M_AXI_MM2S_RREADY),
+        .m_axi_mm2s_rresp(axi_dma_0_M_AXI_MM2S_RRESP),
+        .m_axi_mm2s_rvalid(axi_dma_0_M_AXI_MM2S_RVALID),
+        .m_axi_s2mm_aclk(axi_ethernet_0_refclk_clk_200),
+        .m_axi_s2mm_awaddr(axi_dma_0_M_AXI_S2MM_AWADDR),
+        .m_axi_s2mm_awburst(axi_dma_0_M_AXI_S2MM_AWBURST),
+        .m_axi_s2mm_awcache(axi_dma_0_M_AXI_S2MM_AWCACHE),
+        .m_axi_s2mm_awlen(axi_dma_0_M_AXI_S2MM_AWLEN),
+        .m_axi_s2mm_awprot(axi_dma_0_M_AXI_S2MM_AWPROT),
+        .m_axi_s2mm_awready(axi_dma_0_M_AXI_S2MM_AWREADY),
+        .m_axi_s2mm_awsize(axi_dma_0_M_AXI_S2MM_AWSIZE),
+        .m_axi_s2mm_awvalid(axi_dma_0_M_AXI_S2MM_AWVALID),
+        .m_axi_s2mm_bready(axi_dma_0_M_AXI_S2MM_BREADY),
+        .m_axi_s2mm_bresp(axi_dma_0_M_AXI_S2MM_BRESP),
+        .m_axi_s2mm_bvalid(axi_dma_0_M_AXI_S2MM_BVALID),
+        .m_axi_s2mm_wdata(axi_dma_0_M_AXI_S2MM_WDATA),
+        .m_axi_s2mm_wlast(axi_dma_0_M_AXI_S2MM_WLAST),
+        .m_axi_s2mm_wready(axi_dma_0_M_AXI_S2MM_WREADY),
+        .m_axi_s2mm_wstrb(axi_dma_0_M_AXI_S2MM_WSTRB),
+        .m_axi_s2mm_wvalid(axi_dma_0_M_AXI_S2MM_WVALID),
+        .m_axis_mm2s_tdata(axi_dma_0_M_AXIS_MM2S_TDATA),
+        .m_axis_mm2s_tlast(axi_dma_0_M_AXIS_MM2S_TLAST),
+        .m_axis_mm2s_tready(axi_dma_0_M_AXIS_MM2S_TREADY),
+        .m_axis_mm2s_tvalid(axi_dma_0_M_AXIS_MM2S_TVALID),
+        .s_axi_lite_aclk(axi_ethernet_0_refclk_clk_200),
+        .s_axi_lite_araddr(microblaze_0_axi_periph_M06_AXI_ARADDR),
+        .s_axi_lite_arready(microblaze_0_axi_periph_M06_AXI_ARREADY),
+        .s_axi_lite_arvalid(microblaze_0_axi_periph_M06_AXI_ARVALID),
+        .s_axi_lite_awaddr(microblaze_0_axi_periph_M06_AXI_AWADDR),
+        .s_axi_lite_awready(microblaze_0_axi_periph_M06_AXI_AWREADY),
+        .s_axi_lite_awvalid(microblaze_0_axi_periph_M06_AXI_AWVALID),
+        .s_axi_lite_bready(microblaze_0_axi_periph_M06_AXI_BREADY),
+        .s_axi_lite_bresp(microblaze_0_axi_periph_M06_AXI_BRESP),
+        .s_axi_lite_bvalid(microblaze_0_axi_periph_M06_AXI_BVALID),
+        .s_axi_lite_rdata(microblaze_0_axi_periph_M06_AXI_RDATA),
+        .s_axi_lite_rready(microblaze_0_axi_periph_M06_AXI_RREADY),
+        .s_axi_lite_rresp(microblaze_0_axi_periph_M06_AXI_RRESP),
+        .s_axi_lite_rvalid(microblaze_0_axi_periph_M06_AXI_RVALID),
+        .s_axi_lite_wdata(microblaze_0_axi_periph_M06_AXI_WDATA),
+        .s_axi_lite_wready(microblaze_0_axi_periph_M06_AXI_WREADY),
+        .s_axi_lite_wvalid(microblaze_0_axi_periph_M06_AXI_WVALID),
+        .s_axis_s2mm_tdata(tokenizer_axi_lite_0_m_axis_TDATA),
+        .s_axis_s2mm_tkeep({1'b1,1'b1}),
+        .s_axis_s2mm_tlast(tokenizer_axi_lite_0_m_axis_TLAST),
+        .s_axis_s2mm_tready(tokenizer_axi_lite_0_m_axis_TREADY),
+        .s_axis_s2mm_tvalid(tokenizer_axi_lite_0_m_axis_TVALID));
   design_1_axi_ethernet_0_0 axi_ethernet_0
        (.axi_rxd_arstn(axi_ethernet_0_dma_s2mm_prmry_reset_out_n),
         .axi_rxs_arstn(axi_ethernet_0_dma_s2mm_sts_reset_out_n),
@@ -747,6 +859,39 @@ module design_1
         .S04_AXI_wready(axi_ethernet_0_dma_M_AXI_SG_WREADY),
         .S04_AXI_wstrb(axi_ethernet_0_dma_M_AXI_SG_WSTRB),
         .S04_AXI_wvalid(axi_ethernet_0_dma_M_AXI_SG_WVALID),
+        .S05_AXI_araddr(axi_dma_0_M_AXI_MM2S_ARADDR),
+        .S05_AXI_arburst(axi_dma_0_M_AXI_MM2S_ARBURST),
+        .S05_AXI_arcache(axi_dma_0_M_AXI_MM2S_ARCACHE),
+        .S05_AXI_arlen(axi_dma_0_M_AXI_MM2S_ARLEN),
+        .S05_AXI_arlock(1'b0),
+        .S05_AXI_arprot(axi_dma_0_M_AXI_MM2S_ARPROT),
+        .S05_AXI_arqos({1'b0,1'b0,1'b0,1'b0}),
+        .S05_AXI_arready(axi_dma_0_M_AXI_MM2S_ARREADY),
+        .S05_AXI_arsize(axi_dma_0_M_AXI_MM2S_ARSIZE),
+        .S05_AXI_arvalid(axi_dma_0_M_AXI_MM2S_ARVALID),
+        .S05_AXI_rdata(axi_dma_0_M_AXI_MM2S_RDATA),
+        .S05_AXI_rlast(axi_dma_0_M_AXI_MM2S_RLAST),
+        .S05_AXI_rready(axi_dma_0_M_AXI_MM2S_RREADY),
+        .S05_AXI_rresp(axi_dma_0_M_AXI_MM2S_RRESP),
+        .S05_AXI_rvalid(axi_dma_0_M_AXI_MM2S_RVALID),
+        .S06_AXI_awaddr(axi_dma_0_M_AXI_S2MM_AWADDR),
+        .S06_AXI_awburst(axi_dma_0_M_AXI_S2MM_AWBURST),
+        .S06_AXI_awcache(axi_dma_0_M_AXI_S2MM_AWCACHE),
+        .S06_AXI_awlen(axi_dma_0_M_AXI_S2MM_AWLEN),
+        .S06_AXI_awlock(1'b0),
+        .S06_AXI_awprot(axi_dma_0_M_AXI_S2MM_AWPROT),
+        .S06_AXI_awqos({1'b0,1'b0,1'b0,1'b0}),
+        .S06_AXI_awready(axi_dma_0_M_AXI_S2MM_AWREADY),
+        .S06_AXI_awsize(axi_dma_0_M_AXI_S2MM_AWSIZE),
+        .S06_AXI_awvalid(axi_dma_0_M_AXI_S2MM_AWVALID),
+        .S06_AXI_bready(axi_dma_0_M_AXI_S2MM_BREADY),
+        .S06_AXI_bresp(axi_dma_0_M_AXI_S2MM_BRESP),
+        .S06_AXI_bvalid(axi_dma_0_M_AXI_S2MM_BVALID),
+        .S06_AXI_wdata(axi_dma_0_M_AXI_S2MM_WDATA),
+        .S06_AXI_wlast(axi_dma_0_M_AXI_S2MM_WLAST),
+        .S06_AXI_wready(axi_dma_0_M_AXI_S2MM_WREADY),
+        .S06_AXI_wstrb(axi_dma_0_M_AXI_S2MM_WSTRB),
+        .S06_AXI_wvalid(axi_dma_0_M_AXI_S2MM_WVALID),
         .aclk(axi_ethernet_0_refclk_clk_200),
         .aclk1(mig_7series_0_ui_clk),
         .aresetn(rst_mig_7series_0_100M_peripheral_aresetn));
@@ -1053,6 +1198,22 @@ module design_1
         .M05_AXI_wready(microblaze_0_axi_periph_M05_AXI_WREADY),
         .M05_AXI_wstrb(microblaze_0_axi_periph_M05_AXI_WSTRB),
         .M05_AXI_wvalid(microblaze_0_axi_periph_M05_AXI_WVALID),
+        .M06_AXI_araddr(microblaze_0_axi_periph_M06_AXI_ARADDR),
+        .M06_AXI_arready(microblaze_0_axi_periph_M06_AXI_ARREADY),
+        .M06_AXI_arvalid(microblaze_0_axi_periph_M06_AXI_ARVALID),
+        .M06_AXI_awaddr(microblaze_0_axi_periph_M06_AXI_AWADDR),
+        .M06_AXI_awready(microblaze_0_axi_periph_M06_AXI_AWREADY),
+        .M06_AXI_awvalid(microblaze_0_axi_periph_M06_AXI_AWVALID),
+        .M06_AXI_bready(microblaze_0_axi_periph_M06_AXI_BREADY),
+        .M06_AXI_bresp(microblaze_0_axi_periph_M06_AXI_BRESP),
+        .M06_AXI_bvalid(microblaze_0_axi_periph_M06_AXI_BVALID),
+        .M06_AXI_rdata(microblaze_0_axi_periph_M06_AXI_RDATA),
+        .M06_AXI_rready(microblaze_0_axi_periph_M06_AXI_RREADY),
+        .M06_AXI_rresp(microblaze_0_axi_periph_M06_AXI_RRESP),
+        .M06_AXI_rvalid(microblaze_0_axi_periph_M06_AXI_RVALID),
+        .M06_AXI_wdata(microblaze_0_axi_periph_M06_AXI_WDATA),
+        .M06_AXI_wready(microblaze_0_axi_periph_M06_AXI_WREADY),
+        .M06_AXI_wvalid(microblaze_0_axi_periph_M06_AXI_WVALID),
         .S00_AXI_araddr(microblaze_0_M_AXI_DP_ARADDR),
         .S00_AXI_arprot(microblaze_0_M_AXI_DP_ARPROT),
         .S00_AXI_arready(microblaze_0_M_AXI_DP_ARREADY),
@@ -1171,7 +1332,11 @@ module design_1
         .peripheral_aresetn(rst_mig_7series_0_100M_peripheral_aresetn1),
         .slowest_sync_clk(mig_7series_0_ui_clk));
   design_1_tokenizer_axi_lite_0_0 tokenizer_axi_lite_0
-       (.s_axi_aclk(axi_ethernet_0_refclk_clk_200),
+       (.m_axis_tdata(tokenizer_axi_lite_0_m_axis_TDATA),
+        .m_axis_tlast(tokenizer_axi_lite_0_m_axis_TLAST),
+        .m_axis_tready(tokenizer_axi_lite_0_m_axis_TREADY),
+        .m_axis_tvalid(tokenizer_axi_lite_0_m_axis_TVALID),
+        .s_axi_aclk(axi_ethernet_0_refclk_clk_200),
         .s_axi_araddr(microblaze_0_axi_periph_M05_AXI_ARADDR),
         .s_axi_aresetn(rst_mig_7series_0_100M_peripheral_aresetn),
         .s_axi_arready(microblaze_0_axi_periph_M05_AXI_ARREADY),
@@ -1189,7 +1354,11 @@ module design_1
         .s_axi_wdata(microblaze_0_axi_periph_M05_AXI_WDATA),
         .s_axi_wready(microblaze_0_axi_periph_M05_AXI_WREADY),
         .s_axi_wstrb(microblaze_0_axi_periph_M05_AXI_WSTRB),
-        .s_axi_wvalid(microblaze_0_axi_periph_M05_AXI_WVALID));
+        .s_axi_wvalid(microblaze_0_axi_periph_M05_AXI_WVALID),
+        .s_axis_tdata(axi_dma_0_M_AXIS_MM2S_TDATA),
+        .s_axis_tlast(axi_dma_0_M_AXIS_MM2S_TLAST),
+        .s_axis_tready(axi_dma_0_M_AXIS_MM2S_TREADY),
+        .s_axis_tvalid(axi_dma_0_M_AXIS_MM2S_TVALID));
 endmodule
 
 module microblaze_0_local_memory_imp_1K0VQXK

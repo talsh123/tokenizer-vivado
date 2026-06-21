@@ -19,6 +19,9 @@ module tokenizer_axi_lite #(
     parameter OUT_FIFO_DEPTH_LOG2 = 8  // both FIFOs are 2^8 = 256 entries deep. holds 256 token IDs. 
 )(
     // inputs and outputs section - AXI-Lite slave interface
+    // Tell Vivado that this clock drives the AXI-Lite (s_axi) and BOTH AXI-Stream (s_axis, m_axis)
+    // interfaces, so the block design associates the streams with this clock (clears BD 41-967).
+    (* X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axi:s_axis:m_axis, ASSOCIATED_RESET s_axi_aresetn" *)
     input wire s_axi_aclk, // the AXI clock
     input wire s_axi_aresetn, // the active-LOW reset. NOTE: the tokenizer pipeline uses active-HIGH reset, the conversion happens later.
     

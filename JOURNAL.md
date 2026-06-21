@@ -1,5 +1,14 @@
 # Engineering Journal — FPGA WordPiece Tokenizer
 
+> **⚠️ This is an ongoing, append-only log.** Entries are added chronologically as
+> work happens and **earlier entries are NOT rewritten** when something changes
+> later — so a per-problem `Status:` line reflects what was true *when it was
+> written*, and some early lines (e.g. "awaiting verification") were superseded by
+> later sections. **The latest sections are the authoritative, current state.** For
+> the final, reconciled status of everything (review fixes H1–L3 and the R2 DMA
+> datapath), read the most recent sections of this file and `HANDOFF.md` /
+> `CODE_REVIEW.md`, not the older mid-file status lines.
+
 This journal documents the debugging and hardening of the hardware tokenizer,
 problem by problem, for the final project report. Each entry records the
 background of the problem, the engineering discipline it belongs to, the
@@ -772,6 +781,179 @@ the wasted pre-tokenizer handshake cycles are **P1** — both done and verified 
   by fixing the TB or documenting it; implement the full RTL8211E PHY register sequence (the BSP
   patches are the pragmatic fix); relocate the 9 `.mem` files out of `Downloads/` into the project
   tree; and remove the `tb_axi_pipeline.v` temp debug probe for the final clean version.
+
+---
+
+## Optimization R2 — AXI-Stream + DMA datapath (replace byte-by-byte MMIO)
+
+### Engineering field
+**Hardware/software co-design and on-chip data movement (AXI4-Stream + DMA).** With M4's blind
+delay gone, the dominant on-board cost was the per-byte MMIO loop: the MicroBlaze spends ~50-100
+cycles of software overhead per byte (poll STATUS, write `TX_DATA`), so a 43-char line took ~1.1 ms
+against ~10 us of fabric tokenization -- the system was MMIO-bound, not fabric-bound. R2 adds a
+stream datapath so an AXI DMA moves bytes in and tokens out at ~1/clock with no per-element CPU
+involvement.
+
+### RTL design (`tokenizer_axi_lite.v`, additive -- AXI-Lite path unchanged)
+- **AXI4-Stream slave `s_axis`** (8-bit) feeds the existing input FIFO; `s_axis_tready =
+  !in_fifo_full && !in_fifo_wr_en`; the FIFO write got an `else if (s_axis_fire)` branch.
+- **AXI4-Stream master `m_axis`** (16-bit = one token) drains the output FIFO; the FIFO pops on
+  `out_fifo_rd_en || m_axis_fire`.
+- **TLAST threading** (the crux of the DMA framing): `input_done` latches when the input stream's
+  `s_axis_tlast` byte is accepted and clears when the response's last token is handed off; a
+  `producing` term (= `pipeline_busy_all` minus the `!out_fifo_empty` term) says "is anything still
+  upstream of the output FIFO?". Then `m_axis_tlast = m_axis_tvalid && out_fifo_one_left &&
+  input_done && !producing` -- assert TLAST only on the token that empties the FIFO once nothing
+  more can be produced. Because the final token lands in the FIFO the cycle *after* the emit pulse,
+  `producing` has already dropped, so there is no race.
+- **`0x0C` TOKEN_COUNT register** (write-to-clear, increments per enqueued token): simple-mode AXI
+  DMA S2MM does not report the received length, so firmware reads this to learn how many tokens a
+  transfer produced. Single-driver via a `clear_count` pulse (same pattern as M2's overflow clear).
+- The pre-tokenizer/trie core is untouched, so **token IDs stay identical**.
+
+### Verification -- `tb_axi_dma.v` (new)
+Drives `s_axis` like a DMA MM2S, collects `m_axis` like an S2MM, and checks token IDs, that TLAST
+lands on exactly the last token, and that `TOKEN_COUNT(0x0C)` matches. Green: `hello` -> `7592`,
+`embed` -> `7861 8270` (tlast on `8270`), `embedding` -> `7861 8270 4667`. The four AXI-Lite
+testbenches got the new stream inputs tied off; full regression stayed green.
+
+**Debugging notes (two real lessons):**
+1. **Testbench driving race** -- the first runs showed the first char of every word dropped and
+   TLAST never asserting. Cause: `axis_send` drove `s_axis_*` with blocking assignments *at* the
+   posedge, racing the DUT's sampling -- the probe (a different always block) happened to win and
+   showed correct bytes, but the FIFO write / `input_done` lost and saw the next byte / a deasserted
+   `tlast`. Fixed by driving the stream stimulus on the **negedge** so values are stable when the
+   DUT samples.
+2. **`.mem` not loaded** -- before that, the trie looped forever in the binary search (`st 4->5->6`)
+   because the 9 `.mem` files weren't in the xsim run dir (uninitialized BRAM). Root cause: the
+   `.xpr` referenced `sources_1/imports/` which **did not exist**. Fixed by creating that dir and
+   committing the 9 current (4-hex) `.mem` there so the project is self-contained -- this is also
+   what finally killed the recurring "`$readmemh` cannot open" failures.
+
+### Block-design integration (Vivado)
+- The tokenizer is a **module-reference IP** (`module_ref`), so Vivado auto-infers the two
+  AXI4-Stream interfaces from the port names -- no IP-Packager step. One required RTL tweak: an
+  `(* X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axi:s_axis:m_axis, ASSOCIATED_RESET
+  s_axi_aresetn" *)` attribute on `s_axi_aclk` to associate the streams with the clock (clears
+  `BD 41-967`); metadata-only, no re-verify.
+- Added an **AXI DMA** (Simple mode; MM2S stream 8-bit, S2MM stream 16-bit), MM2S -> `s_axis`,
+  `m_axis` -> S2MM, S_AXI_LITE + the memory masters wired to the MicroBlaze/DDR via Connection
+  Automation. DMA memory window = the MIG DDR range (`0x8000_0000`+), so DMA buffers must live in
+  DDR. (The floating `init_calib_complete` was left for a separate change -- the design already
+  works with it unconnected; wiring it into `rst_clk_wiz_1_100M/dcm_locked` via an AND with
+  `clk_wiz_1/locked` is the robustness follow-up.)
+
+### Firmware
+A DMA `echo.c` draft (`lwip_echo_server/src/echo_dma_draft.txt`) uses simple-mode `XAxiDma`: clear
+`0x0C` -> flush input from cache -> arm S2MM -> kick MM2S -> poll both done -> read `0x0C` for the
+count -> invalidate + read the token buffer -> send back. Buffers must be in DDR; input must end on
+a word boundary so the last word flushes and TLAST propagates (the draft appends `\n` if needed).
+
+*Status (design):* RTL + `tb_axi_dma` + the `0x0C` check **verified in xsim**, full regression green,
+block design wired (DMA + clock association). See the on-board bring-up below for the firmware
+integration, the two real bugs, and the final verified numbers.
+
+### On-board bring-up & verification (R2 complete, 2026-06-21)
+
+The firmware draft was integrated into `echo.c` (replacing the byte-by-byte AXI-Lite send/drain) and
+the design brought up on silicon. **Result: R2 works on-board, every golden vector correct, ~14x
+faster than the MMIO build on the pangram and the gap widens with input length.**
+
+**Firmware (`echo.c`), final form:**
+- Constants locked from this build's `xparameters.h` -- this is the **SDT / Vitis-Unified flow**, so
+  there are no `_DEVICE_ID` macros: the `XAxiDma` driver is looked up by **base address**.
+  `TOKENIZER_BASE = 0x44A00000` (`TOKEN_COUNT` at `+0x0C`); `TOK_DMA_BASEADDR =
+  XPAR_AXI_DMA_0_BASEADDR = 0x41E10000`. NOTE there are **two** AXI DMAs in the design -- ours is
+  `0x41E10000`; the AXI Ethernet's own DMA is `0x41E00000`. Using the wrong one is an easy trap.
+- `tokenizer_dma_init()` (`LookupConfig` by base -> `CfgInitialize` -> assert Simple mode via
+  `XAxiDma_HasSg` -> disable interrupts) and `tokenizer_dma_run(len)`: clear `0x0C` ->
+  `DCacheFlushRange` the input -> `DCacheInvalidateRange` the token buffer -> arm S2MM
+  (`DEVICE_TO_DMA`) -> kick MM2S (`DMA_TO_DEVICE`) -> poll both `XAxiDma_Busy` with a bounded timeout
+  -> invalidate + read `0x0C` for the token count.
+- DMA buffers (`dma_in_buf[2048]`, `dma_tok_buf[1024]`, 64-byte aligned) resolve to **DDR** -- the
+  only region the AXI DMA can reach. Confirmed on-board at `0x80031B00` / `0x80032300` (the linker
+  places `.bss` in the MIG range; no linker-script change needed). The MicroBlaze D-cache covers the
+  MIG range, so the flush/invalidate calls are required.
+- `recv_callback` now copies the TCP segment to DDR, runs one DMA round-trip, and formats the decimal
+  IDs. The AXI-timer instrumentation was kept so the DMA latency is directly comparable to the old
+  MMIO `Total:` numbers (printed as `DMA total: <us>`).
+
+**Bug 1 -- the programmed bitstream was not the final design.** The first on-board runs failed
+*identically to a hardware fault*: MM2S completed cleanly (status `Idle`+`IOC`, no error) but the
+tokenizer produced **0 tokens** (`TOK_COUNT=0`, STATUS `0x01` = empty/idle). Two temporary firmware
+self-tests localized it without a rebuild: an **MMIO self-test** (feed `"embed "` via `TX_DATA 0x00`,
+which writes the *same* input FIFO the DMA feeds) returned `TOK_COUNT=2`, proving the **core + input
+FIFO + output path all work**; a **DMA self-test** (run the full datapath on a known DDR buffer)
+returned 0. Inspecting the generated wrapper (`design_1_tokenizer_axi_lite_0_0.v`) and `design_1.hwh`
+showed the `s_axis`/`m_axis` interfaces and **all four handshake nets correctly wired** (8/16 widths,
+both on `clk_wiz_1_clk_100`) -- so the hardware was sound. The real cause was that the programmed
+bitstream predated the final IP changes; a clean **regenerate bitstream -> re-read `.xsa` -> re-apply
+the PHY patches -> rebuild** made the DMA self-test return `ntok=2 7861 8270` from `0x80031B00`.
+**Lesson (re-confirmed from the embed-`[UNK]` saga): when on-board behavior contradicts a verified
+datapath, suspect the programmed bitstream before the RTL.**
+
+**Bug 2 -- the zero-token TLAST hang (a genuine R2 design corner).** With the fresh bitstream the
+golden words tokenized correctly, but the **TCP connection aborted**. Root cause: a telnet client
+sends a word and its trailing `\r\n` as **separate TCP segments**, and a boundary-only segment
+(`"\r\n"`, spaces) produces **zero tokens**. Because `m_axis_tlast` rides on a token, a zero-token
+response means **TLAST is never asserted**, so the simple-mode S2MM transfer waits forever and
+`tokenizer_dma_run` spins its (then 100M-iteration) timeout *inside the lwIP callback* -> the stack
+stalls for seconds -> the connection drops. The AXI-Lite path never hit this (MMIO simply produced no
+tokens and returned). **Fix (firmware):** scan each segment for any word character and **never launch
+a DMA transfer that cannot produce >=1 token**. A boundary-only segment is skipped -- and if it
+carried a newline, a `\r\n` is emitted so the preceding word's tokens are terminated on their own
+line (telnet splits the word and its CR/LF). The poll timeout was also cut from 100M to **1M**
+iterations as defense-in-depth: a legit 44-token transfer needs only ~hundreds of iterations, so this
+caps any future stall at tens of ms instead of seconds (short enough that lwIP won't drop the link).
+
+**On-board results (clean build, telnet to port 7):**
+
+| Text | Chars | Tokens | DMA latency | Token IDs (match HuggingFace bert-base-uncased) |
+|---|---|---|---|---|
+| `the quick brown fox jumps over the lazy dog` | 43 | 9 | **70 us** | `1996 4248 2829 4419 14523 2058 1996 13971 3899` |
+| `tokenization of unbelievable embeddings is remarkably straightforward` | 69 | 11 | **54 us** | `19204 3989 1997 23653 7861 8270 4667 2015 2003 17431 19647` |
+| `machine learning models ... training corpus` | 156 | 24 | **72 us** | `3698 4083 ... 13931` (24 ids) |
+
+The DMA latency is **flat** (~54-72 us) even as input nearly quadruples -- it is dominated by fixed
+per-transfer overhead (the two 2 KB cache invalidates, arming S2MM, DMA setup), not by the data, so
+**per-token cost falls** as input grows (7.8 -> 3.0 us/token). Versus the MMIO build's ~1000 us on the
+pangram that is **~14x**, and the advantage **widens** with input length (MMIO grows linearly with
+bytes/tokens; DMA stays flat). Refinement noted for the report: the post-transfer invalidate clears
+the full 2 KB token buffer every call -- invalidating only `ntok*2` bytes would drop the small-input
+numbers further and sharpen the flat-vs-linear curve.
+
+**Temporary diagnostics removed** for the final firmware: the two startup self-tests
+(`tokenizer_mmio_selftest`, `tokenizer_dma_selftest`) and the verbose `S2MM timeout` register dump
+were stripped once R2 was signed off.
+
+*Status:* **R2 DONE and verified on-board.** Next: the report deliverables below (performance /
+power / CSV). The CPU-vs-FPGA benchmark script is at `analysis/cpu_tokenizer_benchmark.py`.
+
+---
+
+## Report deliverables queued after the DMA (performance + power)
+
+Two analyses are queued for the final report, to be done once the DMA is verified on-board (full
+detail in `HANDOFF.md` -> OPEN ITEMS -> NEXT):
+
+1. **Fair FPGA-vs-CPU performance comparison (apples-to-apples).** The existing `tb_perf_measurement`
+   cycle count is *not* pure fabric latency despite its header -- it includes the AXI-Lite send
+   cadence (`tok_send_byte` ~10 cyc/byte) and fixed `repeat(500)`/`repeat(2000)` wait loops, so it
+   over-states FPGA latency (the real win is larger). The defensible number is the **true fabric
+   latency**: first character into the trie (`pt_out_char_valid`) to the last token emitted
+   (`tok_out_valid`), with input streamed at 1 byte/clock (the `s_axis`/DMA path), measured on the
+   internal signals -- needs a clean measurement TB. The CPU side must use **`BertTokenizerFast`**
+   (the Rust tokenizer; the benchmark script currently uses the slow pure-Python `BertTokenizer` and
+   mislabels it "Rust-accelerated"), with the actual console output attached and the CPU clock
+   (~3-5 GHz) stated next to the FPGA's 100 MHz. The Test-2 16-vs-15 sim artifact (issue #12) is a
+   noted caveat that inflates that test's count.
+
+2. **Power-consumption comparison (perf-per-watt).** Latency is only half the story; the core
+   argument for a specialized datapath is energy. Vivado `report_power` (post-implementation, with
+   realistic switching activity / a SAIF from the perf sim) for the FPGA's dynamic + static power vs
+   the CPU's package power, reported as **energy per tokenization** (latency x power) or tokens per
+   Joule -- where a 100 MHz datapath should decisively beat a multi-GHz CPU even when latency is
+   close.
 
 ---
 
