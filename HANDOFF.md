@@ -65,6 +65,26 @@ Realtek `0x001c` branch). Confirm before every board build.
 
 ---
 
+## ⭐ HARDENING PASS (2026-06-21): #2 fixed, batch sealed, Vitis items pending
+
+A six-item triage (#1 timing, #2 correctness, #7 zero-token DMA, #8 cache, #9 calib reset, #10 PHY).
+Rule: verify all RTL/BD in sim → ONE implementation run → Vitis items. Status:
+
+| # | Item | Resolution |
+|---|---|---|
+| #2 | 1-char-word merge | **FIXED, sim-verified 66/66** (`word_done_count` counter). In the implementation batch. |
+| #1 | WNS −0.374 ns | **Documented benign** — ASYNC_REG CDC syncs inside the AMD Ethernet MAC; user logic +0.6 ns. No change. |
+| #7 | zero-token DMA TLAST | **→ firmware** (keep `has_word` guard + harden S2MM timeout). Not RTL (AXI-Stream TLAST needs a beat). |
+| #9 | `init_calib_complete` | **DEFERRED** — correct fix is AND it with `clk_wiz_1/locked` into `rst_clk_wiz_1_100M/dcm_locked` (NOT the MIG reset block); reset surgery, theoretical race, deferred to protect the one run. BD restored to known-good. |
+| #8 | cache invalidate `ntok×2` | **Vitis**, Phase 3. |
+| #10 | durable PHY patch | **Vitis**, Phase 3. |
+
+**Phase-1 Vivado batch = just #2.** Next: validate BD clean → one synthesis/implementation → re-flash →
+Vitis (#7/#8/#10) → on-board reverify (golden vectors + the 2 ex-mismatch lines → expect 66/66).
+Full detail in `JOURNAL.md` ("Hardening pass status" + "Bug #2 fixed").
+
+---
+
 ## ⭐ STAGE 5 — Partner evidence pack (2026-06-21): WHERE EVERYTHING RAFI ASKED FOR IS SAVED
 
 **All P0 (book-blocking) deliverables are DONE, plus P1 #11 (waveform).** The single source of truth

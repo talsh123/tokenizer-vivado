@@ -1371,3 +1371,40 @@ H1/M1/embed behavior — those branches' boundary handling is preserved exactly.
 on-silicon 66/66 lands with the pending single synthesis/implementation batch (#2 + #7 + #9). Until
 then the evidence pack figures/CSVs that describe the *board* remain the 64/66 set unless explicitly
 regenerated and labelled "sim". This is the first item of the Phase-1 (no-implementation) batch.
+
+---
+
+## Hardening pass status + #9 (init_calib_complete) DEFERRED — 2026-06-21
+
+A six-item hardening pass was triaged (#1 timing, #2 correctness, #7 zero-token DMA, #8 cache
+invalidate, #9 init_calib_complete, #10 PHY patch durability). Workflow rule: land/verify every
+RTL+BD change in simulation, then ONE synthesis/implementation run, then the Vitis-side items —
+to avoid repeated long implementation runs.
+
+Resolution so far:
+- **#2 (correctness): DONE**, sim-verified 66/66 (see "Bug #2 fixed"). In the implementation batch.
+- **#1 (timing WNS -0.374 ns): documented as benign, no change.** Both failing endpoints are
+  ASYNC_REG=1 CDC reset synchronizers inside the AMD Tri-Mode Ethernet MAC (`clkout0 -> clkout1`,
+  a clock and its phase-shifted sibling); user logic meets timing with +0.6 ns. `report_timing`
+  detail in `analysis/results/timing_failing.rpt`.
+- **#7 (zero-token DMA TLAST): moved to firmware (Vitis).** AXI-Stream TLAST must ride a valid
+  data beat, so a literal "empty-packet TLAST" is not standards-clean; the working `has_word`
+  firmware guard (never arms a 0-token DMA) is the correct fix, to be hardened with the S2MM
+  timeout in `echo.c`. Not an RTL change.
+- **#9 (init_calib_complete -> reset): DEFERRED.** Evaluated against the actual BD reset topology:
+  `rst_mig_7series_0_100M` resets ONLY the MIG (`-> mig_7series_0/aresetn`); the MicroBlaze and ALL
+  peripherals (incl. `tokenizer_axi_lite_0`, DMA, SmartConnect) are reset by `rst_clk_wiz_1_100M`
+  (`dcm_locked <- clk_wiz_1/locked`). So the *correct* fix is to AND `mig_7series_0/init_calib_complete`
+  with `clk_wiz_1/locked` into **`rst_clk_wiz_1_100M/dcm_locked`** (hold MicroBlaze+peripherals in
+  reset until DDR calibration completes) -- NOT the MIG reset block. Deferred because: (a) it is
+  reset-architecture surgery with real boot-hang risk, (b) the race is theoretical here -- the
+  MicroBlaze runs milliseconds of LMB-BRAM init before any DDR use vs ~microseconds of calibration,
+  and has never misbehaved, (c) protecting the single implementation run. A trial disconnect of
+  `mig_7series_0/mmcm_locked` was reverted (reconnected to `rst_mig_7series_0_100M/dcm_locked`) to
+  restore the known-good topology before building. If pursued later: do it as its own deliberate
+  change on `rst_clk_wiz_1_100M/dcm_locked` and gate acceptance on an on-board boot test.
+- **#8 (DMA cache invalidate ntok*2) and #10 (durable PHY patch): Vitis-side**, deferred to Phase 3
+  (after the bitstream is final).
+
+**Phase-1 (Vivado) batch is therefore just #2.** Once the BD validates clean (mmcm_locked restored),
+run one synthesis/implementation, then proceed to the Vitis items.
