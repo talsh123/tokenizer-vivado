@@ -32,10 +32,12 @@ report_timing -delay_type max -sort_by group -max_paths 10 -path_type summary \
               -file $out/timing_worst_paths.rpt
 puts "WROTE: timing_summary.rpt, timing_worst_paths.rpt"
 
-# --- 3. Copy the constraint (.xdc) files next to the reports ----------------
-set xdcs [get_files -quiet -filter {FILE_TYPE == XDC}]
+# --- 3. Copy the USER constraint (.xdc) files next to the reports -----------
+# Only the constrs_1 fileset -- NOT the per-IP generated/OOC xdc files, which
+# would otherwise dump dozens of design_1_*/bd_* constraint files here.
+set xdcs [get_files -quiet -of [get_filesets constrs_1] -filter {FILE_TYPE == XDC}]
 if {[llength $xdcs] == 0} {
-    puts "WARN: no .xdc found via get_files; check uart.srcs/constrs_1/"
+    puts "WARN: no .xdc found in constrs_1; check uart.srcs/constrs_1/"
 } else {
     foreach f $xdcs {
         set dst $out/[file tail $f]
