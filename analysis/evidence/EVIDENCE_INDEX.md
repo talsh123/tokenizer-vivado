@@ -18,8 +18,8 @@ All paths are relative to `analysis/` unless noted. Repo: `tokenizer-vivado` (ua
 | 5 | Corpus + mismatch list for the 2/66 | 📝 | `evidence/MISMATCH_REPORT.md` + `corpus.txt` | Ch 10.2 |
 | 6 | Vivado `report_utilization` | 🟡 | **capture — §B.1** | Ch 10.5 |
 | 7 | Vivado `report_timing_summary` + `.xdc` | 🟡 | **capture — §B.2** (.xdc: `uart.srcs/constrs_1/`) | Ch 6.5 / 10.5 |
-| 8 | Block design screenshot | 🟡 | **capture — §B.3** | Ch 6 / 8 |
-| 9 | Address Editor screenshot | 🟡 | **capture — §B.4** | Ch 8 |
+| 8 | Block design screenshot | ✅ | `figures/block_design.jpg` | Ch 6 / 8 |
+| 9 | Address Editor screenshot | ✅ | `figures/address_editor.jpg` | Ch 8 |
 | 10 | `tb_axi_dma.v` + xsim PASS transcript | ✅ / 🟡 | source in `uart.srcs/sim_1/new/tb_axi_dma.v`; **re-capture transcript — §B.5** | Ch 9 |
 
 ## P1 — strengthens chapters
