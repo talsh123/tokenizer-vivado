@@ -172,3 +172,25 @@ round-trip per segment.
 
 **Verified on-board:** all golden vectors correct; **~14× faster than MMIO** on the pangram
 (~1000 µs → 70 µs), advantage widening with input length (DMA latency flat ~54–72 µs vs MMIO linear).
+
+---
+
+## 8. Known limitations (from the 66-line corpus evaluation, 2026-06-21)
+
+Measured against HuggingFace `bert-base-uncased` over a realistic 66-line corpus (`analysis/`):
+**97% exact word-token match (64/66)**. The remaining differences are characterized, not silent:
+
+- **Punctuation is dropped by design.** `pre_tokenizer.v` treats every non-`[a-z0-9]` byte as a word
+  boundary and emits no standalone-punctuation token, whereas BERT emits one per punctuation mark.
+  This accounts for **13.6%** of BERT's tokens across the corpus. Expected and documented, not a bug.
+- **One-character-word merge bug (2/66 lines).** A one-character word that *immediately follows a
+  multi-subword word* fails to flush at its trailing boundary and is concatenated with the next word:
+  `...summarize a long pdf...` → `along` (idx 27); `...vocab[t] ?? vocab...` → `tvocab` (idx 62).
+  Proven trigger (counter-example idx 0 `...tie a tie` matches, where `a` follows a single-piece word).
+  Root cause: residual backtracking/boundary state in `trie_engine.v` — an **H1-class sibling**.
+  **Decision: documented, not fixed** (submission-day RTL risk; 97% is a strong, honest result). A
+  future fix only needs an xsim re-run of `tb_corpus_perf` to refresh the data — no re-synth/re-flash.
+- **ASCII only.** Non-Latin / accented / emoji input is unsupported (the `analysis/divergence.txt`
+  set); BERT normalizes Unicode. Out of scope for the hardware char map.
+- **Fixed vocabulary in BRAM.** Changing the vocabulary requires re-running `vocab_parser.py` and
+  re-synthesizing; the CPU just loads a different file.

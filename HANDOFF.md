@@ -42,6 +42,17 @@ verification (R2 complete)”). Two bring-up lessons worth carrying forward:
   waits → the lwIP callback stalls → connection abort. Fix: `recv_callback` skips any segment with no
   word character (never launches a 0-token DMA), and the poll timeout was cut 100M→1M as a backstop.
 
+**⭐ FPGA-vs-CPU evaluation is DONE (the report's "why FPGA" data, 2026-06-21).** Full pipeline in
+`analysis/` (one shared 66-line corpus → CPU HuggingFace benchmark + FPGA xsim measurement TB →
+merge → 5 figures). Headlines: **97% exact word-token match** vs bert-base-uncased (FPGA omits
+13.6% punctuation tokens by design); CPU jitter up to **~255 µs** spikes vs FPGA **zero** (cycle-exact
+determinism); and energy **~150–285× better per token** (tokenizer fabric **51 mW** via `report_power`
+vs measured **~30 W** CPU package on a Ryzen 7 7435HS; 24.0 M vs 84.3 k tokens/Joule). Detail +
+numbers + the figure list are in `JOURNAL.md` ("Power / energy result + plots"). **Known limitation
+documented:** a one-character word immediately following a multi-subword word is merged with the next
+word (`a long`→`along`, hit 2/66 lines) — residual backtracking/boundary state, an H1-class sibling;
+deferred as optional (a fix only needs an xsim re-run, no re-flash).
+
 **The embed `[UNK]` "open issue" from the previous handoff is RESOLVED — and it was never an RTL
 bug.** The board was running a STALE bitstream: the Vitis run configuration programs a cached
 `lwip_echo_server/_ide/bitstream/design_1_wrapper.bit` (it was a month old) while loading a fresh
@@ -62,9 +73,15 @@ the tokenizer IP has 8-bit `s_axis` / 16-bit `m_axis` stream ports + a `TOKEN_CO
 an AXI DMA moves bytes/tokens, and `echo.c`'s `recv_callback` does one DMA round-trip per segment.
 The remaining R2-adjacent niceties are optional (see below).
 
-**NEXT — for the final report (R2 is verified, so this is now the active work; these are the report's
-"why FPGA" argument). The CPU-vs-FPGA benchmark script already exists at
-`analysis/cpu_tokenizer_benchmark.py`:**
+**✅ DONE — the three final-report "why FPGA" deliverables below are all COMPLETE** (2026-06-21; data
++ figures in `analysis/`, numbers in `JOURNAL.md` → "Power / energy result + plots"). The original
+task descriptions are kept here for reference; what's left is report write-up only. Quick status:
+(1) performance comparison ✅ (latency core-vs-overhead + throughput + jitter, real corpus);
+(2) power/energy ✅ (`report_power` 51 mW vs measured CPU ~30 W → ~150–285× tokens/Joule);
+(3) measurement→CSV→plots pipeline ✅ (`analysis/*.py`, `results/*.csv`, `figures/*.png`).
+
+**Original task detail (now done — for reference; these were the report's "why FPGA" argument).
+The CPU-vs-FPGA benchmark script lives at `analysis/cpu_tokenizer_benchmark.py`:**
 
 1. **Fair FPGA-vs-CPU performance comparison (apples-to-apples).** The existing `tb_perf_measurement`
    number is NOT pure fabric latency despite its header: `hw_cycles` includes the AXI-Lite send

@@ -1151,3 +1151,120 @@ half of M4 (`tok_pipeline_busy()` + drain-while-sending in `echo.c`) lives in th
 separate Vitis project and is tracked there. Awaiting the engineer's Vivado
 `tb_axi_pipeline` run (the printed token values will confirm a clean pass or
 pinpoint anything remaining) and the on-board TCP check.
+
+---
+
+## FPGA-vs-CPU evaluation pipeline (the report's "why FPGA" data, 2026-06-21)
+
+### Engineering field
+**Quantitative benchmarking / experimental methodology.** With R2 (DMA) verified, the final
+report needs a fair, defensible comparison of the hardware tokenizer against the software
+reference (HuggingFace `bert-base-uncased`). The whole effort lives in `analysis/` and follows
+one principle: **one shared corpus drives both engines, and each is measured at two levels
+(core vs with-overhead) so the comparison is honest about where time is spent.**
+
+### The shared input
+- `analysis/corpus.txt` — **66** real-world ASCII text samples (search queries, chat, reviews,
+  logs, news, abstracts, email, code), spanning ~10 to ~1150 chars so the scaling curves have
+  resolution. Both the CPU benchmark and the FPGA simulation read this exact file.
+- `analysis/divergence.txt` — 14 Unicode/emoji/non-Latin lines, kept SEPARATE; used only to
+  document the FPGA's ASCII-only limitation (not part of the matched correctness score).
+
+### CPU side -- `analysis/cpu_tokenizer_benchmark.py`
+Per corpus line it records, to `results/cpu_results.csv`:
+- **Latency at two levels** -- `core` (the Rust backend `tokenizer.backend_tokenizer`, no Python
+  wrapper) and `overhead` (the full `transformers` call). Each with median/min/max/std/p99/jitter.
+- **Jitter** -- the run-to-run spread; the determinism contrast (the FPGA fabric has none).
+- **Throughput** -- multi-threaded batched tokens/s and chars/s (`results/cpu_throughput.csv`).
+- **Correctness columns** -- `bert_ids` (full), `fpga_expected_ids`, and `punct_tokens` (below).
+
+### FPGA side -- `analysis/gen_corpus_tb.py` -> `tb_corpus_perf.v` (xsim)
+A generator reads `corpus.txt`, emits `corpus_bytes.mem` plus a self-contained measurement
+testbench that streams each line through the real `tokenizer_axi_lite` RTL at **1 byte/clock**
+(the `s_axis`/DMA path) and `$fwrite`s, per line, to `results/fpga_results.csv`: the token IDs,
+`fabric_cycles` (first input byte accepted -> last token emitted, x10 ns = the true fabric
+latency), and `input_cycles`. This is the **deterministic core latency** -- no AXI-Lite cadence,
+no DMA setup, no cache. Paths are baked in as absolute to avoid the recurring xsim `.mem`-not-found
+trap. (The 9 trie `.mem` load as usual.)
+
+### Correctness -- the key methodology decision
+The FPGA pre-tokenizer (`pre_tokenizer.v`: `is_word_char = is_letter_lower || is_digit`) treats
+**every non-alphanumeric byte as a word boundary and does NOT emit standalone-punctuation tokens**,
+whereas BERT emits each punctuation mark as its own token. So a raw id comparison would show large
+"divergence" that is purely this known design choice. Instead the comparison is:
+- `fpga_expected_ids` = BERT's ids with the punctuation tokens removed (= what the FPGA should emit),
+  computed by keeping only pieces whose text (minus `##`) is all-alphanumeric (plus `[UNK]`).
+- Across the corpus, **13.6%** of BERT's tokens are punctuation (462 of 3387) -- the quantified,
+  honest "tokens the FPGA omits by design".
+- `analysis/inspect_mismatch.py` decodes any remaining mismatch back to WordPiece strings to
+  classify it (real bug vs expected limitation) before judging.
+
+### Result and the one characterized bug
+**64 of 66 lines match the FPGA-expected ids EXACTLY -- 97% exact word-token match.** The two
+exceptions (idx 27, 62) are a real, narrow correctness bug, decoded and characterized:
+- idx 27 `...summarize a long pdf...`: BERT `a | long`, FPGA `along` (merged).
+- idx 62 `...vocab[t] ?? vocab...`: BERT `t | vo ##ca ##b`, FPGA `tv ##oca ##b` (`t`+`vocab` merged).
+- **Trigger (proven against the data):** a **one-character word that immediately follows a
+  multi-subword word** fails to flush at its trailing boundary and is concatenated with the next
+  word. Confirmed by the counter-example idx 0 (`...tie a tie`) which matches -- there the one-char
+  word `a` follows a single-piece word. Root cause is residual backtracking/boundary state in the
+  trie engine (an H1-class sibling).
+- **Decision: documented as a known limitation, not fixed** (submission-day RTL risk; 97% match is a
+  strong, honest result). NOTE for a future fix: `fpga_results.csv` comes from *simulation*, so a fix
+  only needs an xsim re-run of `tb_corpus_perf` to refresh the data -- no re-synthesis or re-flash.
+
+### Headline numbers collected so far
+- **Correctness:** 97% exact word-token match (64/66); 13.6% of BERT tokens are punctuation the FPGA
+  omits by design; Unicode unsupported (the divergence set).
+- **CPU latency:** core ~10 us / overhead ~23 us median per line on a Ryzen 7000 (16 threads); both
+  overhead-dominated at these lengths.
+- **Determinism:** CPU jitter up to ~255 us (20x its median, from GC/scheduling); FPGA fabric is
+  cycle-exact (zero jitter) -- the strongest single contrast.
+- **FPGA fabric latency:** `fabric_cycles` ~= 1 cycle/char until the trie backpressures on long lines;
+  deterministic. (vs the CPU's multi-GHz clock -- the 100 MHz-does-comparable-work framing.)
+- **CPU throughput:** 2.53 M tokens/s, 12.0 M chars/s (all 16 threads, batched).
+
+### Pending (still open for the report)
+- `compare_results.py` (merge the CSVs into the final correctness + latency/throughput/jitter table)
+  and `plot_results.py` (the figures: latency vs length, throughput, jitter band, energy/1M-tokens).
+- **Power** (the headline FPGA argument): Vivado `report_power` for the fabric + CPU package power
+  (Ryzen measured, server CPUs via published TDP estimates) -> energy per tokenization / tokens-per-Joule.
+- Honest "cons" to include: fixed BRAM vocab (re-synthesize to change), ASCII-only, single scheme,
+  the 3% edge-case bug above, and per-core (one instance) vs the device's replication headroom.
+
+*Status:* corpus + CPU benchmark + FPGA measurement TB + correctness classification **done and
+verified** (data in `analysis/results/`). The 1-char-after-multipiece bug is characterized and
+documented as a known limitation.
+
+### Power / energy result + plots (COMPLETE)
+
+`report_power` (post-implementation, **vectorless / Low confidence** -- a SAIF would refine it) on
+the implemented design:
+- Whole SoC: **1.369 W** total (1.210 W dynamic + 0.159 W static).
+- By hierarchy (dynamic): `mig_7series_0` 0.692 W, `axi_ethernet_0` 0.165 W, `microblaze_0` 0.085 W,
+  and the tokenizer datapath **`tokenizer_axi_lite_0` = 0.051 W (51 mW)** -- the fair datapath figure.
+  The rest of the SoC exists to *feed* the tokenizer over the network, not to tokenize.
+
+CPU power measured with HWiNFO on the actual machine: **AMD Ryzen 7 7435HS** (8C/16T, 45 W TDP laptop
+part), **~30 W peak CPU package power** under the sustained all-core batched tokenization load
+(idle ~14 W). The ~30 W (not the full 45 W TDP) reflects that tokenization is branch/memory-bound,
+not AVX-heavy.
+
+Energy per token at each platform's measured throughput (FPGA 1.22 M tok/s single core; CPU 2.53 M
+tok/s batched across 16 threads):
+- FPGA: **0.042 J / 1M tokens = 24.0 M tokens/Joule**.
+- CPU : **11.9 J / 1M tokens = 84.3 k tokens/Joule**.
+- => **~285x less energy per token** (CPU total package vs FPGA tokenizer dynamic), or **~152x** on
+  the stricter marginal basis (CPU load-minus-idle ~16 W vs FPGA dynamic 51 mW). Even the conservative
+  ~150x is against an efficient 45 W *laptop* CPU (the tougher competitor).
+
+Figures in `analysis/figures/`: `latency_vs_length`, `jitter_vs_length`, `throughput`, `correctness`,
+`energy_per_million` (two-panel: J/1M tokens + tokens/Joule). Pipeline scripts: `compare_results.py`
+(merge + summary -> `results/comparison.csv`), `plot_results.py` (figures), `cpu_power_load.py` (the
+HWiNFO sustained-load helper), `inspect_mismatch.py` (decode/classify mismatches). `power.csv` holds
+the energy inputs.
+
+*Status (final):* the FPGA-vs-CPU evaluation is **COMPLETE** -- correctness (97% exact word-token
+match), latency (core vs overhead), jitter/determinism (CPU up to ~255 us spikes vs FPGA zero),
+throughput, and energy (**~150-285x**), all with figures. Remaining items are report write-up only;
+the 1-char-after-multipiece bug stays a documented known limitation (optional sim-only fix later).
