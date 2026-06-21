@@ -1494,3 +1494,63 @@ Captured as a memory ([[vivado-module-ref-stale-synth]]) so it isn't re-learned 
 **Status:** golden vectors verified on silicon; #2 fix re-building with the module-ref forced fresh.
 Once `summarize a long`→`7680 7849 4697 1037 2146` and `vocab t vocab`→`29536 3540 2497 1056 29536
 3540 2497` on the board, the hardening pass is complete on silicon (66/66).
+
+---
+
+## Build saga + book verification — 2026-06-22
+
+### CORRECTION to the prior "stale module-ref" entry: it was INCREMENTAL SYNTHESIS
+The earlier entry blamed the tokenizer module-ref cache. After deeper debugging the true root cause is
+**Vivado auto-incremental synthesis**. The `.xpr` had `AutoIncrementalCheckpoint="true"` with a
+reference `uart.srcs/utils_1/imports/synth_1/design_1_wrapper.dcp` whose chain traced back to a
+*pre-#2-fix* build. Every rebuild re-read `trie_engine.v` but incremental synthesis **reused the
+cached tokenizer partition**, so `word_done_count` was never synthesized. Symptom: `open_run impl_1;
+get_cells -hier *word_done_count*` returned **0** and `*word_done_pending*` returned **10**. Reset
+Output Products did NOT fix it; only disabling incremental did.
+
+**Verify reliably with `get_cells` on the opened impl run — do NOT grep `uart.runs` (the `.rpx`
+reports are binary and give false matches).**
+
+**Fix:** deleted the stale reference `uart.srcs/utils_1/imports/synth_1/design_1_wrapper.dcp` (git-
+ignored) AND disable auto-incremental: Design Runs → right-click `synth_1` → Set Incremental Synthesis
+→ Disable, or `set_property AUTO_INCREMENTAL_CHECKPOINT 0 [get_runs synth_1]`; then `reset_run synth_1`
+and full rebuild. Memory [[vivado-module-ref-stale-synth]] updated with the corrected diagnosis.
+
+### NEW blocker exposed by the full synthesis: Tri-Mode Ethernet MAC license
+Once incremental was off, the **full** re-synthesis re-processed `axi_ethernet_0`, and
+`write_bitstream` failed:
+`[Common 17-69] … tri_mode_eth_mac … requires licenses greater than a Design Linking license`.
+The earlier (incremental) builds only succeeded because they reused a previously-licensed MAC netlist.
+The TEMAC needs a **hardware-evaluation** (or full) license to generate a bitstream; the eval license
+makes a **time-limited** bitstream (Ethernet stops after a few hours — fine for a demo, reprogram to
+resume). Obtain it from AMD Product Licensing → "Add Evaluation and No Charge IP Cores" → search
+"ethernet" → `LogiCORE, Tri-Mode Ethernet MAC Evaluation License` → Add → Generate Node-Locked License
+→ download `.lic` → Vivado Help → Manage License → Load License (or set `XILINXD_LICENSE_FILE`).
+Then `reset_target all [get_files design_1.bd]; generate_target all …` (uninterrupted — an interrupt
+left `[Common 17-354] Could not open 'C' for writing` corruption) → build → verify `word_done_count` →
+flash. **This is the live blocker as of 2026-06-22.**
+
+### Book verification (`final_project_book.pdf`)
+Machine-checked the report against the project. Findings:
+- **2 reversed token vectors** (root piece must be first): `tokenization` book `3989 19204` → correct
+  **`19204 3989`**; `internationalization` book `3989 2248` → correct **`2248 3989`**. Fix in §9.5.1 +
+  Table 10.2.
+- The book describes the **pre-#2-fix** state: correctness 64/66 (~97%), "2 edge-case mismatches"
+  (Fig 10.1, Tables 10.1/10.5, Appendix F C21), and boundary mechanism = `word_done_pending`
+  (Table 7.3, §7.5.1, the `busy` snippet in §7.6.2). **Decision:** once the fix is on silicon (66/66),
+  update those to 66/66 / 100% / 0 mismatches and `word_done_pending`→`word_done_count`, and add the #2
+  fix to §7.5 + Appendix F.3. Until flashed, the book is correct for the *currently shipped* board.
+- **`file:line` citations are stale** after the #2 fix shifted `trie_engine.v` (FSM 39-53→42-56, busy
+  189-203→204-214, char_buf 152-170→158-165, H2 guard 451-464→459-465) and `echo.c` shifted after
+  #7/#8. Re-sync to the final commit.
+- Several "pending attachment / not saved" items now EXIST and can upgrade the book: utilization
+  (22,511 LUT / 26,534 FF / 212 BRAM / 0 DSP), timing (WNS −0.374 ns), `Nexys-Video-Master.xdc`,
+  `block_design.jpg`, `address_editor.jpg`, DMA `tlast` `waveform.jpg`, `tb_axi_dma_transcript.txt` —
+  all in `analysis/`. Everything else (constants, register map, energy/throughput numbers, 9/11 token
+  vectors, punctuation breakdown) verified correct.
+
+### Current status (2026-06-22)
+#2 fix: **sim-verified 66/66, NOT yet on silicon.** Board still runs the pre-fix bitstream (shows
+`along`/`tvocab`). Blocked on: TEMAC license → then full non-incremental build → verify
+`word_done_count` in `impl_1` → flash → on-board reverify. Vitis #7/#8/#10 coded+committed, pending the
+on-board reverify after the new `.xsa`/BSP rebuild.

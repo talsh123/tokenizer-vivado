@@ -5,6 +5,39 @@ Paste this into the new chat, or just tell the new chat: "read HANDOFF.md and co
 
 ---
 
+## ⭐⭐ CURRENT STATUS — 2026-06-22 (READ THIS FIRST; supersedes everything below)
+
+**The #2 correctness fix is sim-verified 66/66 but NOT yet on silicon. One live blocker: the Ethernet
+MAC license.** See `CONTINUATION_PROMPT.md` for the full pick-up brief. Quick state:
+
+- **#2 fix** (`word_done_pending` 1-bit → `word_done_count` 2-bit saturating counter in `trie_engine.v`):
+  sim-verified **66/66** (`tb_word_boundary` 8/8, full corpus 66/66, `inspect_mismatch.py` 0). The board
+  still runs the **pre-fix** bitstream (returns `along`/`tvocab` for `summarize a long`/`vocab t vocab`).
+- **Why not on silicon yet — two build problems, in order:**
+  1. **Auto-incremental synthesis** was reusing a pre-fix tokenizer partition → bitstream kept old logic
+     even after a "clean" rebuild. FIXED: deleted the stale reference
+     `uart.srcs/utils_1/imports/synth_1/design_1_wrapper.dcp` + disable incremental
+     (`set_property AUTO_INCREMENTAL_CHECKPOINT 0 [get_runs synth_1]`).
+  2. **TEMAC license (LIVE BLOCKER):** the full re-synthesis re-processed `axi_ethernet_0`;
+     `write_bitstream` fails `[Common 17-69] tri_mode_eth_mac requires > Design Linking license`. Need the
+     free **Tri-Mode Ethernet MAC hardware-evaluation** license (AMD Product Licensing → add eval core →
+     node-locked `.lic` → Vivado Help → Manage License → Load License). Eval = time-limited bitstream
+     (fine for demo).
+- **Verify the fix is in the bitstream BEFORE flashing** (the reliable way — do NOT grep `uart.runs`,
+  the `.rpx` reports are binary): `open_run impl_1` then
+  `get_cells -hierarchical -filter {NAME =~ *word_done_count*}` must be > 0.
+- **Vitis #7/#8/#10** coded + committed (`a403add`, `7b400dc`); pending on-board reverify after the new
+  `.xsa`/BSP rebuild (re-run `lwip_echo_server/src/phy_patch/apply_phy_patch.ps1` if the BSP regenerates).
+- **Book** (`final_project_book.pdf`) audited: 2 reversed vectors (`tokenization`→`19204 3989`,
+  `internationalization`→`2248 3989`), and it describes the pre-fix 64/66 state — update to 66/66 once on
+  silicon. Detail in `JOURNAL.md` "Build saga + book verification".
+
+**Next action:** load the TEMAC eval license → `reset_target all [get_files design_1.bd]` →
+`generate_target all …` (do not interrupt) → build → `get_cells` check → flash → on-board reverify
+(`summarize a long`→`7680 7849 4697 1037 2146`, `vocab t vocab`→`29536 3540 2497 1056 29536 3540 2497`).
+
+---
+
 ## ⭐ CURRENT STATUS — 2026-06-21 (read this first; the RTFC below is the original, now stale)
 
 **The entire code review is DONE and VERIFIED ON SILICON — H1, H2, M1, M2, M3, M4, P1, L1, L2, L3 —

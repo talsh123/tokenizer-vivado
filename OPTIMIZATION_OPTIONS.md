@@ -217,8 +217,10 @@ worth it.
   ~500 µs per-packet floor is gone; latency now scales with token count.
 - **R2** ✅ — AXI-Stream + AXI DMA datapath, shipped and verified on-board (**~14× vs MMIO**; DMA
   latency flat ~54–72 µs). See §(f) R2 above and `CODE_REVIEW.md` §7.
-- **Correctness #2** ✅ — the 1-char-word-after-multipiece merge bug fixed (`word_done_pending` single
-  bit → `word_done_count` saturating counter); corpus **64/66 → 66/66** (sim). See `CODE_REVIEW.md` §8/§9.
+- **Correctness #2** ✅ (sim) — the 1-char-word-after-multipiece merge bug fixed (`word_done_pending`
+  single bit → `word_done_count` saturating counter); corpus **64/66 → 66/66** (sim). **NOT yet on
+  silicon (2026-06-22)** — blocked by a Vivado build issue (auto-incremental synthesis, then the TEMAC
+  bitstream license); see `CONTINUATION_PROMPT.md`. Detail: `CODE_REVIEW.md` §8/§9.
 - **Firmware hardening** ✅ — #7 DMA reset-on-timeout recovery, #8 `ntok×2`-sized cache invalidate, and
   #10 durable RTL8211E PHY patch (`lwip_echo_server/src/phy_patch/*.golden` + `apply_phy_patch.ps1`).
 

@@ -15,7 +15,8 @@ This document gives you several independent ways to confirm the bug on the
 > second boundary that arrived during the previous word's replay. Fix: `word_done_pending` →
 > `word_done_count` (2-bit saturating counter). Corpus **64/66 → 66/66** (sim); see `CODE_REVIEW.md`
 > §8/§9, `JOURNAL.md` "Bug #2 fixed", and `tb_word_boundary.v`. The verification methods below still
-> apply to both.
+> apply to both. **Status 2026-06-22:** sim-verified only — NOT yet on silicon (Vivado build blocked on
+> the TEMAC license; see `CONTINUATION_PROMPT.md`); the board still produces the pre-fix `along`/`tvocab`.
 
 ---
 
