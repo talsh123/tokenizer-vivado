@@ -26,6 +26,11 @@ set tbs {
 }
 
 catch { close_sim -force }
+# Disable launch_simulation's auto-run so it only LOADS the snapshot; we then issue exactly one
+# `run all` per TB. Without this, launch_simulation auto-runs to the testbench's normal $finish and
+# the extra `run all` continues the finished sim forward into its watchdog $finish -- printing a
+# bogus "Simulation timed out!" on tests that actually PASSED (and tripping the FAIL classifier).
+set_property -name {xsim.simulate.runtime} -value {0us} -objects [get_filesets sim_1]
 set proj_dir [get_property DIRECTORY [current_project]]
 set logf [file join $proj_dir "[current_project].sim" sim_1 behav xsim simulate.log]
 set summary {}
@@ -39,7 +44,9 @@ foreach tb $tbs {
         launch_simulation
         run all
     } emsg]} {
-        # classify from the freshly written simulate.log (conservative: any FAIL/ERROR wins)
+        # classify from the freshly written simulate.log. A real hang trips the watchdog ("timed
+        # out"); a real assertion prints "FAIL"/"FAILED". With the auto-run disabled above, the
+        # watchdog only fires on a genuine hang, so this is reliable.
         set verdict "done (no PASS/FAIL marker)"
         if {[file exists $logf]} {
             set fh [open $logf r]; set txt [read $fh]; close $fh
