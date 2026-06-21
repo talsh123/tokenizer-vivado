@@ -1454,3 +1454,43 @@ Vitis commits: `a403add` (#7/#8/#10) + `7b400dc` (the `.golden` correction). The
 **State:** #7/#8/#10 coded + committed; pending the on-board reverify after the new bitstream is
 flashed (run `apply_phy_patch.ps1` if the BSP was regenerated). Implementation run is the only
 remaining gate to "everything on silicon."
+
+---
+
+## On-board reverify + the stale module-ref synthesis catch — 2026-06-21
+
+After flashing the (supposedly #2-fixed) bitstream, the board was retested over TCP.
+
+**Golden vectors: all correct on silicon** — `hello`→7592, `hello hardware`→7592 8051,
+`embedding`→7861 8270 4667, the pangram→1996 4248 2829 4419 14523 2058 1996 13971 3899. DMA path,
+Ethernet (100 Mbps via the RTL8211E patch), and the tokenizer core all work. DMA latencies 36–64 us.
+
+**But the #2 fix was NOT on silicon.** The two fix-proof lines came back with the OLD merge bug:
+- `summarize a long` → `sum ##mar ##ize along` (2247 = "along"; should be 1037 "a" + 2146 "long")
+- `vocab t vocab` → `vo ##ca ##b tv ##oca ##b` (should be 1056 "t" + vo ##ca ##b)
+
+These are byte-identical to the pre-fix wrong output. Golden vectors don't exercise the bug, so they
+masked it.
+
+**Root cause (definitive): stale Vivado module-ref synthesis.** The tokenizer is a `module_ref`; when
+`trie_engine.v` was edited, Generate Bitstream reused the **cached pre-fix module-ref netlist** even
+though synthesis re-ran (synth_1 @ 20:21, after the 19:40 fix). Proof: `uart.runs/impl_1/
+route_report_power_0.rpx` (the current impl's power report) contains **`word_done_pending`** (old
+signal), and **`word_done_count`** (the fix) is in **zero** synthesized/implemented files. The source
+and simulation have the fix; the bitstream does not.
+
+Ruled out: the Vitis `_ide/bitstream` cache (it was a month-old May-16 copy, but `launch.json`
+correctly points at `uart.runs/impl_1/design_1_wrapper.bit` @ 20:34, so the *path* was right — the
+`.bit` at that path was just built from stale RTL). Both stale-`.bit`-path and stale-synth produce
+the same "board behaves like old code" symptom; check both.
+
+**Fix (one more build):** Sources → right-click `design_1.bd` → **Reset Output Products** →
+**Generate Output Products (Global)** → `reset_run synth_1` → Generate Bitstream. **Verify before
+flashing:** `grep -rl word_done_count uart.runs/impl_1` must hit and `word_done_pending` must not.
+Then export `.xsa` → Vitis re-read → re-apply PHY patches if BSP regen → rebuild → flash → re-test.
+
+Captured as a memory ([[vivado-module-ref-stale-synth]]) so it isn't re-learned the hard way.
+
+**Status:** golden vectors verified on silicon; #2 fix re-building with the module-ref forced fresh.
+Once `summarize a long`→`7680 7849 4697 1037 2146` and `vocab t vocab`→`29536 3540 2497 1056 29536
+3540 2497` on the board, the hardening pass is complete on silicon (66/66).

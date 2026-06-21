@@ -79,10 +79,20 @@ Rule: verify all RTL/BD in sim → ONE implementation run → Vitis items. Statu
 | #8 | cache invalidate `ntok×2` | **DONE in `echo.c`** (Vitis `a403add`): post-transfer invalidate sized to `ntok×2` (TOK_COUNT read first), not the full 2 KB. Pending on-board verify. |
 | #10 | durable PHY patch | **DONE** (Vitis `a403add`/`7b400dc`): canonical `*.c.golden` copies in `lwip_echo_server/src/phy_patch/` + `apply_phy_patch.ps1` one-command re-apply after any BSP regen (`.golden` ext stops the IDE auto-adding them → would dup-link). |
 
-**Phase-1 Vivado batch = just #2; Vitis #7/#8/#10 are coded + committed.** Next: validate BD clean →
-one synthesis/implementation → re-flash → **run `apply_phy_patch.ps1` if the BSP was regenerated** →
-on-board reverify (golden vectors + the 2 ex-mismatch lines → expect 66/66).
-Full detail in `JOURNAL.md` ("Hardening pass status" + "Bug #2 fixed" + "Vitis hardening").
+**Phase-1 Vivado batch = just #2; Vitis #7/#8/#10 are coded + committed.**
+
+**⚠️ CRITICAL build step (cost a whole build+flash cycle on 2026-06-21):** the tokenizer is a Vivado
+`module_ref`. After editing `trie_engine.v`/`pre_tokenizer.v`/`tokenizer_axi_lite.v`, **Reset Output
+Products → Generate Output Products (Global) → `reset_run synth_1`** BEFORE Generate Bitstream — else
+synthesis reuses the cached pre-edit netlist and the bitstream silently keeps OLD logic (source + sim
+look fixed; the board runs old behavior, and golden vectors mask it). **Verify before flashing:**
+`grep -rl word_done_count uart.runs/impl_1` must hit; `word_done_pending` must not. See memory
+`vivado-module-ref-stale-synth` and JOURNAL "stale module-ref synthesis catch".
+
+**On-board reverify status (2026-06-21):** golden vectors confirmed on silicon (tokenizer/DMA/Ethernet
+all good); the **#2 fix is being re-built** after the stale-module-ref catch above. Done when
+`summarize a long`→`7680 7849 4697 1037 2146` and `vocab t vocab`→`29536 3540 2497 1056 29536 3540 2497`
+on the board. Full detail in `JOURNAL.md` ("On-board reverify" + "Bug #2 fixed" + "Vitis hardening").
 
 **Tooling (in `analysis/`):** `run_all_tbs.tcl` runs all 12 testbenches in one action with a PASS/FAIL
 summary; `gen_reports.tcl` regenerates post-impl utilization + timing (+ copies the `constrs_1` xdc).
