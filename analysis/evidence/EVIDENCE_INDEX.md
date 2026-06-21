@@ -26,7 +26,7 @@ All paths are relative to `analysis/` unless noted. Repo: `tokenizer-vivado` (ua
 
 | # | Deliverable | Status | Location | Book |
 |---|---|---|---|---|
-| 11 | Waveform: `s_axis_tlast`/`m_axis_tlast`/`TOKEN_COUNT`/S2MM | 🟡 | **capture — §B.6** | Ch 7.6.4 / 9 |
+| 11 | Waveform: `s_axis_tlast`/`m_axis_tlast`/`TOKEN_COUNT`/S2MM | ✅ | `figures/waveform.jpg` (m_axis_tlast on final token 4667; TOKEN_COUNT read 2→3; m_axis_tready accept) | Ch 7.6.4 / 9 |
 | 12 | Full board TCP regression log after DMA | 🟡 | **capture — §C** (PuTTY/telnet log) | Ch 9.5 / 10.2 |
 | 13 | Route B Quartus fit/map/sta + .sof/.pof + Icarus vvp | ⬜ | partner's other route — not in this repo | Ch 12 |
 | 14 | PNG/SVG exports of all Mermaid diagrams | 🟡 | export from the `.md` Mermaid blocks (§D) | Ch 6–9 / App E |
