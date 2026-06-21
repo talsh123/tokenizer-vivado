@@ -74,13 +74,14 @@ Rule: verify all RTL/BD in sim → ONE implementation run → Vitis items. Statu
 |---|---|---|
 | #2 | 1-char-word merge | **FIXED, sim-verified 66/66** (`word_done_count` counter). In the implementation batch. |
 | #1 | WNS −0.374 ns | **Documented benign** — ASYNC_REG CDC syncs inside the AMD Ethernet MAC; user logic +0.6 ns. No change. |
-| #7 | zero-token DMA TLAST | **→ firmware** (keep `has_word` guard + harden S2MM timeout). Not RTL (AXI-Stream TLAST needs a beat). |
+| #7 | zero-token DMA TLAST | **DONE in `echo.c`** (Vitis `a403add`): `has_word` guard kept + `tokenizer_dma_recover()` resets the DMA on MM2S/S2MM timeout. Pending on-board verify. |
 | #9 | `init_calib_complete` | **DEFERRED** — correct fix is AND it with `clk_wiz_1/locked` into `rst_clk_wiz_1_100M/dcm_locked` (NOT the MIG reset block); reset surgery, theoretical race, deferred to protect the one run. BD restored to known-good. |
-| #8 | cache invalidate `ntok×2` | **Vitis**, Phase 3. |
-| #10 | durable PHY patch | **Vitis**, Phase 3. |
+| #8 | cache invalidate `ntok×2` | **DONE in `echo.c`** (Vitis `a403add`): post-transfer invalidate sized to `ntok×2` (TOK_COUNT read first), not the full 2 KB. Pending on-board verify. |
+| #10 | durable PHY patch | **DONE** (Vitis `a403add`/`7b400dc`): canonical `*.c.golden` copies in `lwip_echo_server/src/phy_patch/` + `apply_phy_patch.ps1` one-command re-apply after any BSP regen (`.golden` ext stops the IDE auto-adding them → would dup-link). |
 
-**Phase-1 Vivado batch = just #2.** Next: validate BD clean → one synthesis/implementation → re-flash →
-Vitis (#7/#8/#10) → on-board reverify (golden vectors + the 2 ex-mismatch lines → expect 66/66).
+**Phase-1 Vivado batch = just #2; Vitis #7/#8/#10 are coded + committed.** Next: validate BD clean →
+one synthesis/implementation → re-flash → **run `apply_phy_patch.ps1` if the BSP was regenerated** →
+on-board reverify (golden vectors + the 2 ex-mismatch lines → expect 66/66).
 Full detail in `JOURNAL.md` ("Hardening pass status" + "Bug #2 fixed").
 
 ---
