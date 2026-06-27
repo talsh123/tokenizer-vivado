@@ -2,7 +2,7 @@
 //Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2025.2 (win64) Build 6299465 Fri Nov 14 19:35:11 GMT 2025
-//Date        : Sun Jun 21 14:33:30 2026
+//Date        : Mon Jun 22 01:51:42 2026
 //Host        : Talsh running 64-bit major release  (build 9200)
 //Command     : generate_target design_1.bd
 //Design      : design_1
@@ -469,7 +469,7 @@ module design_1
   wire microblaze_0_ilmb_1_UE;
   wire microblaze_0_ilmb_1_WAIT;
   wire [4:0]microblaze_0_xlconcat_dout;
-  wire mig_7series_0_mmcm_locked1;
+  wire mig_7series_0_mmcm_locked;
   wire mig_7series_0_ui_clk;
   wire mig_7series_0_ui_clk_sync_rst;
   wire [0:0]phy_reset_out;
@@ -1275,7 +1275,7 @@ module design_1
         .ddr3_ras_n(DDR3_0_ras_n),
         .ddr3_reset_n(DDR3_0_reset_n),
         .ddr3_we_n(DDR3_0_we_n),
-        .mmcm_locked(mig_7series_0_mmcm_locked1),
+        .mmcm_locked(mig_7series_0_mmcm_locked),
         .s_axi_araddr(axi_smc_M00_AXI_ARADDR),
         .s_axi_arburst(axi_smc_M00_AXI_ARBURST),
         .s_axi_arcache(axi_smc_M00_AXI_ARCACHE),
@@ -1326,7 +1326,7 @@ module design_1
         .slowest_sync_clk(axi_ethernet_0_refclk_clk_200));
   design_1_rst_mig_7series_0_100M_1 rst_mig_7series_0_100M
        (.aux_reset_in(1'b1),
-        .dcm_locked(mig_7series_0_mmcm_locked1),
+        .dcm_locked(mig_7series_0_mmcm_locked),
         .ext_reset_in(mig_7series_0_ui_clk_sync_rst),
         .mb_debug_sys_rst(1'b0),
         .peripheral_aresetn(rst_mig_7series_0_100M_peripheral_aresetn1),

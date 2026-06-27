@@ -62,6 +62,6 @@ py ./cpu_tokenizer_benchmark.py     # CPU core+overhead latency, jitter, through
 py ./gen_corpus_tb.py               # emit corpus_bytes.mem + tb_corpus_perf.v
 #   -> run tb_corpus_perf in Vivado xsim -> results/fpga_results.csv
 py ./compare_results.py             # merge -> results/comparison.csv (match %, punct %, us)
-py ./inspect_mismatch.py            # decode the 2 mismatches
+py ./inspect_mismatch.py            # decode any mismatches (0 after the #2 fix; 2 pre-fix)
 py ./plot_results.py                # 5 figures into figures/
 ```

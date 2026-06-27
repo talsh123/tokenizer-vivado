@@ -1,12 +1,14 @@
 # Correctness & mismatch report — 66/66 exact match (100%) after the #2 fix
 
-> **UPDATE (#2 fixed, sim-verified):** the 2 edge-case mismatches below were **root-caused and
-> fixed** in `trie_engine.v` (`word_done_pending` single bit → `word_done_count` saturating
-> counter). The fixed RTL scores **66/66 (100%)** in xsim (`tb_word_boundary` 8/8 PASS; full-corpus
-> `compare_results.py` → 100.0%, `inspect_mismatch.py` → 0 mismatches). This section is kept because
-> it documents the bug. **Note on hardware state:** the result is **sim-verified**; the on-silicon
-> 66/66 lands once the pending synthesis/implementation re-flash is done (the previously *shipped*
-> bitstream is 64/66). See JOURNAL "Bug #2 fixed" and the root-cause write-up there.
+> **UPDATE (#2 fixed, VERIFIED ON SILICON 2026-06-22):** the 2 edge-case mismatches below were
+> **root-caused and fixed** in `trie_engine.v` (`word_done_pending` single bit → `word_done_count`
+> saturating counter). The fixed RTL scores **66/66 (100%)** in xsim (`tb_word_boundary` 8/8 PASS;
+> full-corpus `compare_results.py` → 100.0%, `inspect_mismatch.py` → 0 mismatches) **and on hardware**
+> — after disabling auto-incremental synthesis and loading the TEMAC Hardware-Eval license, the
+> rebuilt bitstream was flashed and the board returned the fixed streams (`summarize a long`→
+> `7680 7849 4697 1037 2146`, `vocab t vocab`→`29536 3540 2497 1056 29536 3540 2497`, 1037/1056
+> standing alone). This section is kept because it documents the bug. See JOURNAL "Bug #2 fixed" and
+> "#2 fix VERIFIED ON SILICON" for the root-cause and on-board write-ups.
 
 **Purpose:** defend the correctness graph and pre-empt *"why only 97%?"* (Book Ch. 10.2)
 

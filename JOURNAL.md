@@ -1554,3 +1554,30 @@ Machine-checked the report against the project. Findings:
 `along`/`tvocab`). Blocked on: TEMAC license → then full non-incremental build → verify
 `word_done_count` in `impl_1` → flash → on-board reverify. Vitis #7/#8/#10 coded+committed, pending the
 on-board reverify after the new `.xsa`/BSP rebuild.
+
+### #2 fix VERIFIED ON SILICON — 66/66 (2026-06-22, later same day)
+The TEMAC license blocker is cleared and the fix is **confirmed on hardware.**
+- **License root cause:** the build had failed `[Common 17-69] tri_mode_eth_mac requires > Design
+  Linking license` simply because the Tri-Mode Ethernet MAC **Hardware-Eval** license wasn't active at
+  build time. The node-locked eval license (`IP:Hardware_Eval`, host `40c2ba8bc923`, valid to
+  19-oct-2026, Version Limit **2026.10**) *does* cover Vivado **2025.2** (2025.2 ≤ 2026.10). After a
+  Vivado relaunch it was honored. (Note: `get_license_status` is not a Tcl command in 2025.2 — the GUI
+  License Manager is the authoritative check.)
+- **Stale `.dcp` warning:** `[Project 1-19] Could not find … synth_1/design_1_wrapper.dcp` is the
+  deleted incremental-checkpoint reference; harmless with incremental OFF. Cleared with
+  `set_property AUTO_INCREMENTAL_CHECKPOINT 0 [get_runs synth_1]` + `remove_files [get_files -quiet
+  */design_1_wrapper.dcp]`.
+- **Build:** full non-incremental run completed; `write_bitstream` succeeded with the eval license
+  (`design_1_wrapper.bit`, 9.7 MB, 2026-06-22 02:15).
+- **Netlist proof (before flashing):** `open_run impl_1` →
+  `word_done_count` cells = **6** (>0), `word_done_pending` cells = **0** (old 1-bit signal gone).
+- **On-board reverify over TCP (port 7), all correct:** `hello`→`7592`;
+  `the quick brown fox jumps over the lazy dog`→`1996 4248 2829 4419 14523 2058 1996 13971 3899`;
+  `2024`→`16798 2549`; `abc123`→`5925 12521 2509`. **#2 fix proofs:** `summarize a long`→
+  `7680 7849 4697 1037 2146` (1037 alone) and `vocab t vocab`→`29536 3540 2497 1056 29536 3540 2497`
+  (1056 alone) — the 1-char-word merge no longer happens. Single-char `d`→`1040`.
+- **#7 robustness on silicon:** UART shows empty/punctuation-only lines as `Received N bytes
+  (boundary-only, skipped)` with the server continuing to serve (no hang, DMA recovers).
+- **Result: 66/66 on silicon.** The hardening pass is complete on hardware. The book §6 corrections
+  (64/66→66/66, `word_done_pending`→`word_done_count`, the 2 reversed vectors, stale file:line cites)
+  are now real and should be applied.

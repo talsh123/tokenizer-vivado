@@ -2,7 +2,7 @@
   "schema": "xilinx.com:schema:json_instance:1.0",
   "ip_inst": {
     "xci_name": "bd_48ac_m06wn_0",
-    "cell_name": "m06_w_node",
+    "cell_name": "m06_nodes/m06_w_node",
     "component_reference": "xilinx.com:ip:sc_node:1.0",
     "ip_revision": "19",
     "gen_directory": ".",
@@ -245,5 +245,5 @@
       }
     }
   },
-  "checksum": "a5032bf2"
+  "checksum": "f7ec8038"
 }

@@ -5,7 +5,27 @@ Paste this into the new chat, or just tell the new chat: "read HANDOFF.md and co
 
 ---
 
-## ⭐⭐ CURRENT STATUS — 2026-06-22 (READ THIS FIRST; supersedes everything below)
+## ⭐⭐⭐ CURRENT STATUS — 2026-06-22 (FINAL; READ THIS FIRST; supersedes everything below)
+
+**The #2 correctness fix is VERIFIED ON SILICON — 66/66. The TEMAC license blocker is cleared and the
+hardening pass is complete on hardware.** What happened:
+- **License:** the build failed only because the Tri-Mode Ethernet MAC **Hardware-Eval** license wasn't
+  active at build time. The node-locked eval (`IP:Hardware_Eval`, valid to 19-oct-2026, Version Limit
+  2026.10) covers Vivado 2025.2; after a relaunch it was honored. `get_license_status` is not a Tcl
+  command in 2025.2 — use the GUI License Manager.
+- **Build:** full non-incremental run; `write_bitstream` succeeded (`design_1_wrapper.bit`, 9.7 MB).
+  Netlist check: `word_done_count` cells = 6 (>0), `word_done_pending` = 0.
+- **On-board (port 7):** all golden vectors correct; **#2 proofs pass** — `summarize a long`→
+  `7680 7849 4697 1037 2146` (1037 alone), `vocab t vocab`→`29536 3540 2497 1056 29536 3540 2497`
+  (1056 alone). #7 robustness confirmed (empty/punct-only → `boundary-only, skipped`, no hang).
+- **Remaining:** apply the book §6 corrections (now real: 64/66→66/66, `word_done_pending`→
+  `word_done_count`, 2 reversed vectors, stale file:line cites); user to push the local commits.
+
+Full detail in `JOURNAL.md` → "#2 fix VERIFIED ON SILICON — 66/66".
+
+---
+
+## ⭐⭐ STATUS — 2026-06-22 (earlier; superseded by the FINAL block above)
 
 **The #2 correctness fix is sim-verified 66/66 but NOT yet on silicon. One live blocker: the Ethernet
 MAC license.** See `CONTINUATION_PROMPT.md` for the full pick-up brief. Quick state:
@@ -105,7 +125,7 @@ Rule: verify all RTL/BD in sim → ONE implementation run → Vitis items. Statu
 
 | # | Item | Resolution |
 |---|---|---|
-| #2 | 1-char-word merge | **FIXED, sim-verified 66/66** (`word_done_count` counter). In the implementation batch. |
+| #2 | 1-char-word merge | **FIXED, VERIFIED ON SILICON 66/66** (2026-06-22, `word_done_count` counter). |
 | #1 | WNS −0.374 ns | **Documented benign** — ASYNC_REG CDC syncs inside the AMD Ethernet MAC; user logic +0.6 ns. No change. |
 | #7 | zero-token DMA TLAST | **DONE in `echo.c`** (Vitis `a403add`): `has_word` guard kept + `tokenizer_dma_recover()` resets the DMA on MM2S/S2MM timeout. Pending on-board verify. |
 | #9 | `init_calib_complete` | **DEFERRED** — correct fix is AND it with `clk_wiz_1/locked` into `rst_clk_wiz_1_100M/dcm_locked` (NOT the MIG reset block); reset surgery, theoretical race, deferred to protect the one run. BD restored to known-good. |
@@ -118,14 +138,17 @@ Rule: verify all RTL/BD in sim → ONE implementation run → Vitis items. Statu
 `module_ref`. After editing `trie_engine.v`/`pre_tokenizer.v`/`tokenizer_axi_lite.v`, **Reset Output
 Products → Generate Output Products (Global) → `reset_run synth_1`** BEFORE Generate Bitstream — else
 synthesis reuses the cached pre-edit netlist and the bitstream silently keeps OLD logic (source + sim
-look fixed; the board runs old behavior, and golden vectors mask it). **Verify before flashing:**
-`grep -rl word_done_count uart.runs/impl_1` must hit; `word_done_pending` must not. See memory
-`vivado-module-ref-stale-synth` and JOURNAL "stale module-ref synthesis catch".
+look fixed; the board runs old behavior, and golden vectors mask it). **Verify before flashing** (use
+`get_cells`, NOT grep — the `.rpx` reports are binary and false-match): `open_run impl_1` then
+`get_cells -hierarchical -filter {NAME =~ *word_done_count*}` must be >0 and `*word_done_pending*` must
+be 0. The actual root cause turned out to be auto-incremental synthesis (not module-ref caching) — see
+memory `vivado-module-ref-stale-synth` and JOURNAL "stale module-ref synthesis catch".
 
-**On-board reverify status (2026-06-21):** golden vectors confirmed on silicon (tokenizer/DMA/Ethernet
-all good); the **#2 fix is being re-built** after the stale-module-ref catch above. Done when
+**On-board reverify status — DONE (2026-06-22):** golden vectors confirmed on silicon
+(tokenizer/DMA/Ethernet all good) **and** the #2 fix verified on the board —
 `summarize a long`→`7680 7849 4697 1037 2146` and `vocab t vocab`→`29536 3540 2497 1056 29536 3540 2497`
-on the board. Full detail in `JOURNAL.md` ("On-board reverify" + "Bug #2 fixed" + "Vitis hardening").
+(1037/1056 standing alone). **66/66 on silicon.** Full detail in `JOURNAL.md` ("#2 fix VERIFIED ON
+SILICON" + "On-board reverify" + "Bug #2 fixed" + "Vitis hardening").
 
 **Tooling (in `analysis/`):** `run_all_tbs.tcl` runs all 12 testbenches in one action with a PASS/FAIL
 summary; `gen_reports.tcl` regenerates post-impl utilization + timing (+ copies the `constrs_1` xdc).
@@ -170,12 +193,14 @@ chapter, and has a capture-checklist for anything still outstanding. Quick acces
 - **Waveform input EOP (cosmetic):** `figures/waveform.jpg` shows the output `m_axis_tlast`; an
   optional left-scroll snip of the input burst would also show `s_axis_tlast`.
 
-### Two documented honest limitations (state, don't hide, in the report)
+### Documented honest limitation (state, don't hide, in the report)
 1. **Timing does not fully close:** WNS −0.374 ns on 2 of 87,343 endpoints. The board runs correctly
    (those paths have margin under real conditions); full closure is future work. Inspect with
    `analysis/results/timing_worst_paths.rpt`.
-2. **1-char-word-after-multipiece bug:** `a long`→`along`, `t vocab`→`tvocab`; 2/66 corpus lines.
-   H1-class residual; deferred (a fix is sim-only — no re-flash). Detail in `MISMATCH_REPORT.md`.
+
+(The former item 2 — the 1-char-word-after-multipiece bug, `a long`→`along`, `t vocab`→`tvocab` — is
+**no longer a limitation: fixed and verified on silicon 2026-06-22** (`word_done_count` counter,
+66/66). Detail in `MISMATCH_REPORT.md` and JOURNAL "#2 fix VERIFIED ON SILICON".)
 
 ---
 

@@ -1,7 +1,7 @@
 {
    "ActiveEmotionalView":"Default View",
-   "Default View_ScaleFactor":"0.262789",
-   "Default View_TopLeft":"-715,0",
+   "Default View_ScaleFactor":"0.242467",
+   "Default View_TopLeft":"-887,0",
    "ExpandedHierarchyInLayout":"",
    "guistr":"# # String gsaved with Nlview 7.8.0 2024-04-26 e1825d835c VDI=44 GEI=38 GUI=JA:21.0
 #  -string -flagsOSRD
@@ -45,7 +45,7 @@ preplace netloc clk_wiz_1_clk_125 1 1 3 200J 570 NJ 570 880
 preplace netloc clk_wiz_1_clk_200 1 1 6 NJ 820 NJ 820 920 820 NJ 820 1880J 880 2260J
 preplace netloc mdm_1_Debug_SYS_Rst 1 1 4 220 1290 NJ 1290 NJ 1290 1250
 preplace netloc microblaze_0_xlconcat_dout 1 3 1 900 350n
-preplace netloc mig_7series_0_mmcm_locked1 1 5 3 1910 890 2280J 850 2530
+preplace netloc mig_7series_0_mmcm_locked 1 5 3 1910 890 2280J 850 2530
 preplace netloc mig_7series_0_ui_clk 1 5 3 1910 680 2270J 630 2540
 preplace netloc mig_7series_0_ui_clk_sync_rst 1 5 3 1920 670 2260J 620 2530
 preplace netloc reset_1 1 0 7 20 920 220 840 NJ 840 NJ 840 NJ 840 1850J 920 2270
@@ -54,6 +54,9 @@ preplace netloc rst_clk_wiz_1_100M_mb_reset 1 2 3 N 900 850 1060 1340J
 preplace netloc rst_mig_7series_0_100M_peripheral_aresetn 1 2 5 570 860 890 380 1340 730 1900 930 2260J
 preplace netloc rst_mig_7series_0_100M_peripheral_aresetn1 1 6 1 2280 780n
 preplace netloc sys_clock_1 1 0 1 NJ 840
+preplace netloc axi_dma_0_M_AXIS_MM2S 1 3 3 950 480 NJ 480 1800
+preplace netloc axi_dma_0_M_AXI_MM2S 1 5 1 1850 530n
+preplace netloc axi_dma_0_M_AXI_S2MM 1 5 1 1910 550n
 preplace netloc axi_ethernet_0_dma_M_AXIS_CNTRL 1 3 3 950 10 NJ 10 1810
 preplace netloc axi_ethernet_0_dma_M_AXIS_MM2S 1 3 3 990 390 1300J 330 1840
 preplace netloc axi_ethernet_0_dma_M_AXI_MM2S 1 5 1 1910 90n
@@ -75,15 +78,12 @@ preplace netloc microblaze_0_axi_periph_M02_AXI 1 3 2 NJ 670 1280
 preplace netloc microblaze_0_axi_periph_M03_AXI 1 3 1 860 690n
 preplace netloc microblaze_0_axi_periph_M04_AXI 1 3 4 870J 830 NJ 830 1870J 910 N
 preplace netloc microblaze_0_axi_periph_M05_AXI 1 3 1 990 560n
+preplace netloc microblaze_0_axi_periph_M06_AXI 1 3 2 NJ 750 1330
 preplace netloc microblaze_0_debug 1 4 1 1330 970n
 preplace netloc microblaze_0_dlmb_1 1 5 1 1830 940n
 preplace netloc microblaze_0_ilmb_1 1 5 1 1820 960n
 preplace netloc mig_7series_0_DDR3 1 7 1 NJ 690
-preplace netloc axi_dma_0_M_AXIS_MM2S 1 3 3 950 480 NJ 480 1800
 preplace netloc tokenizer_axi_lite_0_m_axis 1 4 1 N 570
-preplace netloc axi_dma_0_M_AXI_MM2S 1 5 1 1850 530n
-preplace netloc axi_dma_0_M_AXI_S2MM 1 5 1 1910 550n
-preplace netloc microblaze_0_axi_periph_M06_AXI 1 3 2 NJ 750 1330
 levelinfo -pg 1 0 110 390 720 1120 1570 2090 2410 2560
 pagesize -pg 1 -db -bbox -sgen -110 0 2730 1430
 "

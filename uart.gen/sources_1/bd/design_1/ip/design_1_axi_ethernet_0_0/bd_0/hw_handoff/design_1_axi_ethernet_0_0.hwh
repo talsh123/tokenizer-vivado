@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
-<EDKSYSTEM EDWVERSION="1.2" TIMESTAMP="Sun Jun 21 14:33:31 2026" VIVADOVERSION="2025.2">
+<EDKSYSTEM EDWVERSION="1.2" TIMESTAMP="Mon Jun 22 01:52:25 2026" VIVADOVERSION="2025.2">
 
   <SYSTEMINFO ARCH="artix7" BOARD="digilentinc.com:nexys_video:part0:1.2" DEVICE="7a200t" NAME="bd_929b" PACKAGE="sbg484" SPEEDGRADE="-1"/>
 
@@ -108,7 +108,7 @@
         <CONNECTION INSTANCE="mac" PORT="mac_irq"/>
       </CONNECTIONS>
     </PORT>
-    <PORT DIR="O" NAME="mdio_mdc" SIGIS="clk" SIGNAME="mac_mdc">
+    <PORT CLKFREQUENCY="100000000" DIR="O" NAME="mdio_mdc" SIGIS="clk" SIGNAME="mac_mdc">
       <CONNECTIONS>
         <CONNECTION INSTANCE="mac" PORT="mdc"/>
       </CONNECTIONS>
@@ -148,7 +148,7 @@
         <CONNECTION INSTANCE="mac" PORT="rgmii_rx_ctl"/>
       </CONNECTIONS>
     </PORT>
-    <PORT DIR="I" NAME="rgmii_rxc" SIGIS="clk" SIGNAME="mac_rgmii_rxc">
+    <PORT CLKFREQUENCY="100000000" DIR="I" NAME="rgmii_rxc" SIGIS="clk" SIGNAME="mac_rgmii_rxc">
       <CONNECTIONS>
         <CONNECTION INSTANCE="mac" PORT="rgmii_rxc"/>
       </CONNECTIONS>
@@ -163,7 +163,7 @@
         <CONNECTION INSTANCE="mac" PORT="rgmii_tx_ctl"/>
       </CONNECTIONS>
     </PORT>
-    <PORT DIR="O" NAME="rgmii_txc" SIGIS="clk" SIGNAME="mac_rgmii_txc">
+    <PORT CLKFREQUENCY="100000000" DIR="O" NAME="rgmii_txc" SIGIS="clk" SIGNAME="mac_rgmii_txc">
       <CONNECTIONS>
         <CONNECTION INSTANCE="mac" PORT="rgmii_txc"/>
       </CONNECTIONS>
@@ -1941,12 +1941,12 @@
         <PARAMETER NAME="EDK_IPTYPE" VALUE="PERIPHERAL"/>
       </PARAMETERS>
       <PORTS>
-        <PORT DIR="I" LEFT="0" NAME="Op1" POLARITY="ACTIVE_LOW" RIGHT="0" SIGIS="undef" SIGNAME="External_Ports_s_axi_lite_resetn">
+        <PORT DIR="I" LEFT="0" NAME="Op1" RIGHT="0" SIGIS="undef" SIGNAME="External_Ports_s_axi_lite_resetn">
           <CONNECTIONS>
             <CONNECTION INSTANCE="External_Ports" PORT="s_axi_lite_resetn"/>
           </CONNECTIONS>
         </PORT>
-        <PORT DIR="O" LEFT="0" NAME="Res" POLARITY="ACTIVE_HIGH" RIGHT="0" SIGIS="undef" SIGNAME="util_vector_logic_0_Res">
+        <PORT DIR="O" LEFT="0" NAME="Res" RIGHT="0" SIGIS="undef" SIGNAME="util_vector_logic_0_Res">
           <CONNECTIONS>
             <CONNECTION INSTANCE="c_shift_ram_0" PORT="SCLR"/>
             <CONNECTION INSTANCE="c_counter_binary_0" PORT="SCLR"/>

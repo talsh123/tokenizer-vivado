@@ -5,6 +5,20 @@ issues, last work, next steps, and everything needed to continue.
 
 ---
 
+## ✅ RESOLVED 2026-06-22 — the §3 "LIVE BLOCKER" is cleared; #2 fix is ON SILICON (66/66)
+
+The Tri-Mode Ethernet MAC license was loaded (`IP:Hardware_Eval`, valid to 19-oct-2026, covers Vivado
+2025.2), the full non-incremental build succeeded, and the implemented netlist carries the fix
+(`word_done_count` cells = 6, `word_done_pending` = 0). **On-board reverify passed:** all golden
+vectors correct and both #2 proofs stand alone — `summarize a long`→`7680 7849 4697 1037 2146`,
+`vocab t vocab`→`29536 3540 2497 1056 29536 3540 2497`; #7 robustness confirmed (empty/punct-only →
+`boundary-only, skipped`, no hang). **Result: 66/66 on silicon — hardening pass complete.** Everything
+in §3 below is now history; the only remaining work is the §6 book corrections (now real) and pushing
+commits. Current authoritative state: `HANDOFF.md` top block + `JOURNAL.md`
+"#2 fix VERIFIED ON SILICON".
+
+---
+
 ## 1. Role & project
 
 You are continuing a final-year digital-design project: a **hardware BERT WordPiece tokenizer on a

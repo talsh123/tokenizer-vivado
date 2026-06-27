@@ -2,7 +2,7 @@
   "schema": "xilinx.com:schema:json_instance:1.0",
   "ip_inst": {
     "xci_name": "bd_886d_s06tr_0",
-    "cell_name": "s06_transaction_regulator",
+    "cell_name": "s06_entry_pipeline/s06_transaction_regulator",
     "component_reference": "xilinx.com:ip:sc_transaction_regulator:1.0",
     "ip_revision": "12",
     "gen_directory": ".",
@@ -286,5 +286,5 @@
       }
     }
   },
-  "checksum": "635098e6"
+  "checksum": "a58cfa03"
 }

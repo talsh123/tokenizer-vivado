@@ -2429,7 +2429,7 @@
           "microblaze_0_axi_intc_0/intr"
         ]
       },
-      "mig_7series_0_mmcm_locked1": {
+      "mig_7series_0_mmcm_locked": {
         "ports": [
           "mig_7series_0/mmcm_locked",
           "rst_mig_7series_0_100M/dcm_locked"
