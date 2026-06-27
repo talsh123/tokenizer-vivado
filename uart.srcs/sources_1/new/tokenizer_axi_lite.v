@@ -52,7 +52,7 @@ module tokenizer_axi_lite #(
     input wire s_axi_rready, // if the master is ready to read the data
 
     // ================================================================================
-    // AXI4-Stream interface for DMA (optimization R2). Lets an AXI DMA stream bytes in
+    // AXI4-Stream interface for DMA. Lets an AXI DMA stream bytes in
     // and tokens out with no per-element CPU involvement. The AXI-Lite interface above is
     // kept for control/STATUS and as a polling fallback; in practice only one input path
     // and one output path is exercised at a time. The pre-tokenizer/trie core is unchanged,
@@ -105,7 +105,7 @@ module tokenizer_axi_lite #(
 
     reg in_fifo_wr_en; // a single cycle pulse that triggers a FIFO write
 
-    // DMA input stream (R2): accept a byte from the AXI-Stream slave when the input FIFO has space
+    // DMA input stream: accept a byte from the AXI-Stream slave when the input FIFO has space
     // and no AXI-Lite TX write is firing this cycle (the two input paths are mutually exclusive in
     // practice). s_axis_fire is the accepted-byte handshake.
     assign s_axis_tready = !in_fifo_full && !in_fifo_wr_en;
@@ -121,7 +121,7 @@ module tokenizer_axi_lite #(
             if (in_fifo_wr_en && !in_fifo_full) begin // AXI-Lite TX_DATA write
                 in_fifo_mem[in_fifo_wr_ptr[IN_FIFO_DEPTH_LOG2-1:0]] <= s_axi_wdata[7:0]; // store the lower 8 bits of the AXI-Lite write data at the current write position
                 in_fifo_wr_ptr <= in_fifo_wr_ptr + 1; // advance the write pointer
-            end else if (s_axis_fire) begin // DMA input-stream byte (R2); s_axis_tready already implies FIFO space
+            end else if (s_axis_fire) begin // DMA input-stream byte; s_axis_tready already implies FIFO space
                 in_fifo_mem[in_fifo_wr_ptr[IN_FIFO_DEPTH_LOG2-1:0]] <= s_axis_tdata;
                 in_fifo_wr_ptr <= in_fifo_wr_ptr + 1;
             end
@@ -164,24 +164,24 @@ module tokenizer_axi_lite #(
     wire tok_pipeline_busy; // high while the pre-tokenizer or trie engine still has work in flight (from top_tokenizer)
 
     reg out_fifo_rd_en; // single cycle pulse that triggers a FIFO read
-    // L3: marks that the current read-address assertion has already been serviced. A well-behaved
+    // read-address gate: marks that the current read-address assertion has already been serviced. A well-behaved
     // master deasserts arvalid after the handshake, but if a master holds arvalid high across (or
     // after) the read response, this flag stops a second accept from popping the output FIFO again
     // for one intended read. Cleared once arvalid drops, so the next transaction is serviced.
     reg read_addr_serviced;
 
-    // M2: output-FIFO overflow detection (de-silence dropped tokens)
+    // output-FIFO overflow detection (de-silence dropped tokens)
     reg out_fifo_overflow; // sticky: set when a token is dropped because the output FIFO was full
     reg clear_overflow;    // 1-cycle pulse from the AXI write logic (write to STATUS) to clear the flag
 
-    // DMA token-count register (R2): counts tokens enqueued to the output FIFO since the last clear,
+    // DMA token-count register: counts tokens enqueued to the output FIFO since the last clear,
     // readable at AXI-Lite address 0x0C (TOKEN_COUNT). Simple-mode AXI DMA does not report the S2MM
     // received length, so the firmware reads this after a transfer to learn how many tokens came
     // back. Cleared by a write to 0x0C (clear_count pulse from the AXI write block).
     reg [TOKEN_W-1:0] tok_count;
     reg clear_count;
 
-    // ---- DMA output stream (R2) ----
+    // ---- DMA output stream ----
     // input_done: the input stream's final byte (tlast) has been accepted. Held until the matching
     // final token has been handed to the DMA (m_axis tlast handshake), then cleared for the next
     // transfer. Declared here, assigned in the always block below.
@@ -218,21 +218,21 @@ module tokenizer_axi_lite #(
         if (rst) begin // if we have a reset signal
             out_fifo_wr_ptr <= 0; // cleared
             out_fifo_rd_ptr <= 0; // cleared
-            out_fifo_overflow <= 1'b0; // cleared (M2)
-            tok_count <= {TOKEN_W{1'b0}}; // cleared (R2 token counter)
+            out_fifo_overflow <= 1'b0; // cleared
+            tok_count <= {TOKEN_W{1'b0}}; // cleared (DMA token counter)
         end else begin // else
             if (tok_out_valid && !out_fifo_full) begin // when the trie engine emits a token and the output FIFO is not full
                 out_fifo_mem[out_fifo_wr_ptr[OUT_FIFO_DEPTH_LOG2-1:0]] <= tok_out_data; // stores the outputted token
                 out_fifo_wr_ptr <= out_fifo_wr_ptr + 1; // advances the pointer
             end
-            // M2: a token emitted while the FIFO is full is DROPPED. Record it so the loss is
+            // a token emitted while the FIFO is full is DROPPED. Record it so the loss is
             // detectable (STATUS bit 2) instead of silent. 'set' takes priority over 'clear' so
             // a drop is never missed if a clear arrives on the same cycle.
             if (tok_out_valid && out_fifo_full)
                 out_fifo_overflow <= 1'b1;
             else if (clear_overflow)
                 out_fifo_overflow <= 1'b0;
-            // R2: count tokens actually enqueued to the output FIFO (what the DMA will receive).
+            // count tokens actually enqueued to the output FIFO (what the DMA will receive).
             // clear takes priority, so a per-transfer clear (write to 0x0C) before the transfer
             // zeroes it cleanly with no token in flight yet.
             if (clear_count)
@@ -295,12 +295,12 @@ module tokenizer_axi_lite #(
             aw_ready_done <= 1'b0; // cleared
             w_ready_done <= 1'b0; // cleared
             axi_awaddr_latched <= 0; // cleared
-            clear_overflow <= 1'b0; // cleared (M2)
-            clear_count <= 1'b0; // cleared (R2 token counter)
+            clear_overflow <= 1'b0; // cleared
+            clear_count <= 1'b0; // cleared (DMA token counter)
         end else begin
             in_fifo_wr_en <= 1'b0; // on default in every cycle, in_fifo_wr_en is 0. it only goes high when both address and data are ready.
-            clear_overflow <= 1'b0; // M2: default 0; pulses high only on a write to STATUS (0x08)
-            clear_count <= 1'b0; // R2: default 0; pulses high only on a write to TOKEN_COUNT (0x0C)
+            clear_overflow <= 1'b0; // default 0; pulses high only on a write to STATUS (0x08)
+            clear_count <= 1'b0; // default 0; pulses high only on a write to TOKEN_COUNT (0x0C)
 
             // accept write address
             if (s_axi_awvalid && !aw_ready_done) begin // when the master presents a valid write address and we haven't captured it yet
@@ -325,10 +325,10 @@ module tokenizer_axi_lite #(
                 // for any other register, the write is silently ignored.
                     in_fifo_wr_en <= 1'b1; // pulse in FIFO write signal
                 end
-                if (axi_awaddr_latched[3:2] == 2'b10) begin // M2: 0x08 = STATUS -> write-to-clear the overflow flag
+                if (axi_awaddr_latched[3:2] == 2'b10) begin // 0x08 = STATUS -> write-to-clear the overflow flag
                     clear_overflow <= 1'b1;
                 end
-                if (axi_awaddr_latched[3:2] == 2'b11) begin // R2: 0x0C = TOKEN_COUNT -> write-to-clear the counter
+                if (axi_awaddr_latched[3:2] == 2'b11) begin // 0x0C = TOKEN_COUNT -> write-to-clear the counter
                     clear_count <= 1'b1;
                 end
                 // issue a write response and reset the flags for the next transaction.
@@ -354,18 +354,18 @@ module tokenizer_axi_lite #(
             s_axi_rdata <= 0; // cleared
             s_axi_rresp <= 2'b00; // cleared
             out_fifo_rd_en <= 1'b0; // cleared
-            read_addr_serviced <= 1'b0; // cleared (L3)
+            read_addr_serviced <= 1'b0; // cleared
         end else begin
             out_fifo_rd_en <= 1'b0; // on default every cycle, out_fifo_rd_en is 0. it only goes high when RX_DATA (0x04) is read.
 
-            // L3: once the master drops arvalid, release the gate so the next read can be serviced.
+            // once the master drops arvalid, release the gate so the next read can be serviced.
             if (!s_axi_arvalid) read_addr_serviced <= 1'b0;
 
-            if (s_axi_arvalid && !s_axi_rvalid && !read_addr_serviced) begin // master requests a read, we are not already holding a response, and this arvalid assertion has not been serviced yet (L3)
+            if (s_axi_arvalid && !s_axi_rvalid && !read_addr_serviced) begin // master requests a read, we are not already holding a response, and this arvalid assertion has not been serviced yet
                 s_axi_arready <= 1'b1; // s_axi_arready goes HIGH
                 s_axi_rvalid  <= 1'b1; // s_axi_rvalid goes HIGH
                 s_axi_rresp   <= 2'b00; // OKAY
-                read_addr_serviced <= 1'b1; // L3: this read-address assertion is now serviced; block a second pop until arvalid drops
+                read_addr_serviced <= 1'b1; // this read-address assertion is now serviced; block a second pop until arvalid drops
 
                 case (s_axi_araddr[3:2]) // a switch case statement on the return address
                     2'b00: begin // corresponds to 0x00, meaning a write-only register
@@ -391,7 +391,7 @@ module tokenizer_axi_lite #(
                         // (and an overflow check) read.
                         s_axi_rdata <= {28'd0, pipeline_busy_all, out_fifo_overflow, ~out_fifo_empty, ~in_fifo_full};
                     end
-                    2'b11: begin // R2: 0x0C = TOKEN_COUNT -> tokens enqueued since the last clear,
+                    2'b11: begin // 0x0C = TOKEN_COUNT -> tokens enqueued since the last clear,
                         // zero-extended to 32 bits. The firmware reads this after a DMA transfer to
                         // learn how many tokens were produced (simple-mode S2MM doesn't report length).
                         s_axi_rdata <= {{(32-TOKEN_W){1'b0}}, tok_count};

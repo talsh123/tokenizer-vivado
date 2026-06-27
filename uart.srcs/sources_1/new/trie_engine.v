@@ -187,7 +187,7 @@ module trie_engine #(
     reg replaying; // 1 if the engine is replaying buffered characters after a backtrack.
     // during replay, the engine reads from char_buf instead from the pre-tokenizer input and ready stays at 0 to prevent from new characters to come in.
 
-    reg word_too_long; // M1: set when the current word exceeds the char_buf capacity (BUF_DEPTH).
+    reg word_too_long; // set when the current word exceeds the char_buf capacity (BUF_DEPTH).
     // while set, further characters of the word are discarded (drained) and the word is
     // flushed as a single [UNK] at the word boundary, preventing buf_end pointer wrap/corruption.
 
@@ -239,7 +239,7 @@ module trie_engine #(
             term_rd_addr <= {NODE_W{1'b0}}; // cleared
             pending_char <= {CHAR_W{1'b0}}; // cleared
             pending_char_valid <= 1'b0; // cleared
-            word_too_long <= 1'b0; // cleared (M1)
+            word_too_long <= 1'b0; // cleared
         end else begin
             // drive output to output FIFO.
             // every cycle, out_token_valid default to 0.
@@ -261,7 +261,7 @@ module trie_engine #(
                 S_IDLE: begin // S_IDLE state
                     // if a word boundary is pending and we are not replaying (backtracking)
                     if ((word_done_count != 2'd0) && !replaying) begin
-                        // M1 FIX: if the word overflowed char_buf, abandon partial state and emit a
+                        // over-long-word handling: if the word overflowed char_buf, abandon partial state and emit a
                         // single [UNK] sentinel for the over-long word, then reset for the next word.
                         // (Pieces already streamed out for the part that fit remain -- the streaming
                         // architecture cannot un-emit them. This signals truncation and, crucially,
@@ -323,7 +323,7 @@ module trie_engine #(
                             replaying <= 1'b0; // we set the replaying flag to 0, indicating we finished replaying
                             // if we finished the entire word
                             if (word_done_count != 2'd0) begin
-                                // H1 FIX: the boundary is intentionally NOT consumed here. S_EMIT is the
+                                // the boundary is intentionally NOT consumed here. S_EMIT is the
                                 // single owner of the boundary and finalizes the word. Consuming it early made
                                 // S_EMIT's (best_end==buf_end) branch skip finalization -- holding the FSM
                                 // in S_EMIT and emitting a spurious [UNK] (token 100); and on the
@@ -379,7 +379,7 @@ module trie_engine #(
 
                     // this is the normal operation - meaning there is no word_done, and we aren't backtracking
                     end else if (in_char_valid && ready) begin
-                        // M1 FIX: guard against words longer than the backtracking buffer.
+                        // guard against words longer than the backtracking buffer.
                         // buf_end is 5 bits (0..31); writing a 32nd character would wrap it to 0
                         // and corrupt the buffer. When the buffer is full (buf_end == BUF_DEPTH-1),
                         // stop buffering/walking and discard the remaining characters of this word
@@ -456,7 +456,7 @@ module trie_engine #(
                         state <= S_SEARCH; // go to S_SEARCH to compute the new midpoint after we narrowed it down
                     end else begin // if the edge character > target (greater)
                         // the target is in the lower half [bs_lo, edge_rd_addr-1].
-                        // H2 FIX: if the midpoint is already at the low bound, that lower half
+                        // if the midpoint is already at the low bound, that lower half
                         // is empty -> the character is absent. Computing edge_rd_addr-1 here would
                         // underflow when edge_rd_addr==0 (only possible at a node whose edges start
                         // at offset 0, i.e. node 0): bs_hi would wrap to 0xFFFF, the (bs_lo > bs_hi)
@@ -562,7 +562,7 @@ module trie_engine #(
                                     state <= S_IDLE; // jump to S_IDLE
                                 end
                             end else begin
-                                // H1 FIX (defensive): every branch must assign a next state. With the
+                                // defensive: every branch must assign a next state. With the
                                 // premature boundary consume removed above, reaching here -- a
                                 // match consumed the whole buffer with no word boundary pending -- is
                                 // not expected; return to a safe IDLE rather than holding S_EMIT.
